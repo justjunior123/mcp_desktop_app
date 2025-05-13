@@ -1,2 +1,2 @@
-# mcp_server_client
+# Desktop APP
 A repo for Server and Client
