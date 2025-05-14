@@ -14,7 +14,7 @@ export class MCPServerManager {
   /**
    * Check if a port is available
    */
-  private async isPortAvailable(port: number): Promise<boolean> {
+  async isPortAvailable(port: number): Promise<boolean> {
     return new Promise((resolve) => {
       const server = createServer();
       server.once('error', (err: NodeJS.ErrnoException) => {
@@ -49,12 +49,14 @@ export class MCPServerManager {
    */
   async createServer(name: string, port: number, modelId: string): Promise<MCPServerModel> {
     // Check if port is available, if not find next available port
-    const availablePort = await this.findAvailablePort(port);
+    if (!(await this.isPortAvailable(port))) {
+      throw new Error(`Port ${port} is already in use`);
+    }
     
     // Create server record in database
     const serverRecord = await this.db.createMCPServer({
       name,
-      port: availablePort,
+      port,
       status: 'stopped',
       model: {
         connect: { id: modelId }
@@ -62,7 +64,7 @@ export class MCPServerManager {
     });
 
     // Create server instance
-    const server = new LocalMCPServer(availablePort);
+    const server = new LocalMCPServer(port);
     this.servers.set(serverRecord.id, server);
 
     return serverRecord;
@@ -236,7 +238,34 @@ export class MCPServerManager {
   }
 
   /**
-   * Clean up all servers
+   * Get server status from database
+   */
+  async getServerStatus(id: string): Promise<MCPServerModel | null> {
+    const server = await this.db.getMCPServer(id);
+    if (!server) return null;
+
+    // Check if server instance exists and is running
+    const instance = this.servers.get(id);
+    if (!instance) {
+      return server;
+    }
+
+    // Update status if there's a mismatch
+    if (server.status === 'running') {
+      try {
+        // Try to get server port to check if it's responsive
+        instance.getPort();
+      } catch (error) {
+        await this.db.updateMCPServer(id, { status: 'error' });
+        return await this.db.getMCPServer(id);
+      }
+    }
+
+    return server;
+  }
+
+  /**
+   * Cleanup all servers
    */
   async cleanup(): Promise<void> {
     const servers = await this.listServers();
