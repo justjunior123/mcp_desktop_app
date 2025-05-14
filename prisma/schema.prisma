@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model MCPServer {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("stopped") // running, stopped, error
+  port      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Model {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("not_installed") // installed, not_installed, downloading
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChatSession {
+  id        String    @id @default(uuid())
+  name      String
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id            String      @id @default(uuid())
+  content       String
+  role          String      // user, assistant
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id])
+  chatSessionId String
+  createdAt     DateTime    @default(now())
+} 
