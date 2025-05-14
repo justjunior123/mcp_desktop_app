@@ -12,6 +12,8 @@ const writeFile = promisify(fs.writeFile);
 const rmdir = promisify(fs.rmdir);
 const unlink = promisify(fs.unlink);
 const readdir = promisify(fs.readdir);
+const chmod = promisify(fs.chmod);
+const stat = promisify(fs.stat);
 
 // Create a proper mock process type that extends EventEmitter
 class MockProcess extends EventEmitter {
@@ -82,11 +84,18 @@ describe('ServerManager', () => {
     jest.clearAllMocks();
     mockMonitor.removeAllListeners();
     
-    // Create test directory and required files
+    // Create test directory and required files with proper permissions
     await mkdir(testConfigDir, { recursive: true });
+    await chmod(testConfigDir, 0o777);
+    
     await writeFile(testLLMConfig.modelPath, 'mock model data');
+    await chmod(testLLMConfig.modelPath, 0o777);
+    
     await writeFile(testLLMConfig.configPath, JSON.stringify({ schemaVersion: 1 }));
+    await chmod(testLLMConfig.configPath, 0o777);
+    
     await writeFile(testMCPConfig.configPath, JSON.stringify({ schemaVersion: 1 }));
+    await chmod(testMCPConfig.configPath, 0o777);
     
     manager = new ServerManager(testConfigDir);
     await manager.initialize();
@@ -96,19 +105,44 @@ describe('ServerManager', () => {
     try {
       // Clean up test directory
       const files = await readdir(testConfigDir);
+      
+      // Change permissions and delete files
       await Promise.all(
-        files.map(file => 
-          unlink(path.join(testConfigDir, file))
-            .catch(error => console.warn(`Failed to delete file ${file}:`, error))
-        )
+        files.map(async (file) => {
+          const filePath = path.join(testConfigDir, file);
+          try {
+            const stats = await stat(filePath);
+            if (stats.isDirectory()) {
+              // Handle directories recursively
+              const subFiles = await readdir(filePath);
+              await Promise.all(
+                subFiles.map(async (subFile) => {
+                  const subPath = path.join(filePath, subFile);
+                  await chmod(subPath, 0o777);
+                  await unlink(subPath);
+                })
+              );
+              await chmod(filePath, 0o777);
+              await rmdir(filePath);
+            } else {
+              // Handle regular files
+              await chmod(filePath, 0o777);
+              await unlink(filePath);
+            }
+          } catch (error) {
+            console.warn(`Failed to delete ${file}:`, error);
+          }
+        })
       );
       
+      // Change directory permissions and remove it
       try {
+        await chmod(testConfigDir, 0o777);
         await rmdir(testConfigDir);
       } catch (error: any) {
         // If directory is not empty or already deleted, that's okay
         if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') {
-          console.warn('Failed to delete test directory:', error);
+          console.warn('Failed to remove test directory:', error);
         }
       }
     } catch (error) {

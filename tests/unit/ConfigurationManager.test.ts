@@ -13,6 +13,40 @@ const readdir = promisify(fs.readdir);
 const unlink = promisify(fs.unlink);
 const access = promisify(fs.access);
 const rmdir = promisify(fs.rmdir);
+const chmod = promisify(fs.chmod);
+const stat = promisify(fs.stat);
+
+// Helper function to recursively remove a directory
+async function removeDirectory(dirPath: string) {
+  try {
+    const entries = await readdir(dirPath);
+    
+    await Promise.all(
+      entries.map(async (entry) => {
+        const fullPath = path.join(dirPath, entry);
+        try {
+          const stats = await stat(fullPath);
+          
+          if (stats.isDirectory()) {
+            await removeDirectory(fullPath);
+          } else {
+            await chmod(fullPath, 0o777);
+            await unlink(fullPath);
+          }
+        } catch (error) {
+          console.warn(`Failed to remove ${entry}:`, error);
+        }
+      })
+    );
+    
+    await chmod(dirPath, 0o777);
+    await rmdir(dirPath);
+  } catch (error: any) {
+    if (error.code !== 'ENOENT') {
+      console.warn(`Failed to remove directory ${dirPath}:`, error);
+    }
+  }
+}
 
 describe('ConfigurationManager', () => {
   let configManager: ConfigurationManager;
@@ -44,21 +78,16 @@ describe('ConfigurationManager', () => {
   };
 
   beforeEach(async () => {
-    // Create test directory
+    // Create test directory with proper permissions
     await mkdir(testConfigDir, { recursive: true });
+    await chmod(testConfigDir, 0o777); // Full permissions
     configManager = new ConfigurationManager(testConfigDir);
     await configManager.initialize();
   });
 
   afterEach(async () => {
-    try {
-      const files = await readdir(testConfigDir);
-      for (const file of files) {
-        await unlink(path.join(testConfigDir, file));
-      }
-      await rmdir(testConfigDir);
-    } catch (error) {
-      console.warn('Failed to clean up test directory:', error);
+    if (fs.existsSync(testConfigDir)) {
+      await removeDirectory(testConfigDir);
     }
   });
 
