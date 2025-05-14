@@ -5,18 +5,36 @@ const config: Config.InitialOptions = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest'
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: 'tsconfig.json',
+      useESM: true,
+      jsx: 'react-jsx',
+    }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  testEnvironmentOptions: {
+    url: 'http://localhost/'
+  },
+  verbose: true,
+  testTimeout: 30000,
+  extensionsToTreatAsEsm: ['.ts', '.tsx'],
   globals: {
     'ts-jest': {
-      tsconfig: 'tsconfig.jest.json'
-    }
-  }
+      useESM: true,
+      jsx: 'react-jsx',
+      tsconfig: {
+        jsx: 'react-jsx',
+      },
+    },
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(react-native|@react-native|react-native-.*|@react-native-.*)/)',
+  ],
 };
 
 export default config; 
