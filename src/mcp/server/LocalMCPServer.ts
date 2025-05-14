@@ -1,24 +1,23 @@
-import { McpServer } from "@modelcontextprotocol/server";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/server/streamableHttp";
-import express from "express";
-import { Tool } from "@modelcontextprotocol/protocol";
-import { Server } from "http";
+import { MCPServer } from './MCPServer';
+import { Tool } from '../types/protocol';
 
 export class LocalMCPServer {
-  private server: McpServer;
-  private app: express.Express;
-  private httpServer: Server | null = null;
-  private port: number;
+  private server: MCPServer;
+  private tools: {
+    echo?: ReturnType<MCPServer['tool']>;
+    systemInfo?: ReturnType<MCPServer['tool']>;
+  } = {};
 
   constructor(port: number = 3100) {
-    this.port = port;
-    this.app = express();
-    this.app.use(express.json());
-
-    // Initialize MCP Server
-    this.server = new McpServer({
+    this.server = new MCPServer({
+      port,
       name: "mcp-desktop-local",
-      version: "1.0.0"
+      version: "1.0.0",
+      capabilities: {
+        tools: true,
+        prompts: false,
+        resources: false
+      }
     });
 
     // Setup basic tools
@@ -27,10 +26,9 @@ export class LocalMCPServer {
 
   private registerDefaultTools() {
     // Echo tool for testing
-    const echoTool: Tool = {
-      name: "echo",
-      description: "Echoes back the input",
-      parameters: {
+    this.tools.echo = this.server.tool(
+      "echo",
+      {
         type: "object",
         properties: {
           message: {
@@ -39,69 +37,68 @@ export class LocalMCPServer {
           }
         },
         required: ["message"]
+      },
+      async (params) => {
+        const { message } = params as { message: string };
+        return { message };
       }
-    };
-
-    this.server.addTool(echoTool, async (params) => {
-      return { message: params.message };
-    });
+    );
 
     // System info tool
-    const systemInfoTool: Tool = {
-      name: "systemInfo",
-      description: "Get system information",
-      parameters: {
+    this.tools.systemInfo = this.server.tool(
+      "systemInfo",
+      {
         type: "object",
         properties: {},
         required: []
+      },
+      async () => {
+        return {
+          platform: process.platform,
+          arch: process.arch,
+          version: process.version,
+          memory: process.memoryUsage()
+        };
       }
-    };
-
-    this.server.addTool(systemInfoTool, async () => {
-      return {
-        platform: process.platform,
-        arch: process.arch,
-        version: process.version,
-        memory: process.memoryUsage()
-      };
-    });
+    );
   }
 
   public async start(): Promise<void> {
-    // Create HTTP server
-    this.httpServer = new Server(this.app);
-
-    // Setup MCP transport
-    const transport = new StreamableHTTPServerTransport(this.app, "/mcp");
-    await this.server.connect(transport);
-
-    // Start listening
-    return new Promise((resolve, reject) => {
-      this.httpServer?.listen(this.port, () => {
-        console.log(`MCP Server listening on port ${this.port}`);
-        resolve();
-      }).on('error', reject);
-    });
+    await this.server.start();
   }
 
   public async stop(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.httpServer) {
-        this.httpServer.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      } else {
-        resolve();
-      }
-    });
+    await this.server.stop();
   }
 
   public getPort(): number {
-    return this.port;
+    return this.server['port'];
   }
 
-  public getServer(): McpServer {
+  public getServer(): MCPServer {
     return this.server;
+  }
+
+  // Tool management methods
+  public enableTool(name: string): void {
+    const tool = this.tools[name as keyof typeof this.tools];
+    if (tool) {
+      tool.enable();
+    }
+  }
+
+  public disableTool(name: string): void {
+    const tool = this.tools[name as keyof typeof this.tools];
+    if (tool) {
+      tool.disable();
+    }
+  }
+
+  public removeTool(name: string): void {
+    const tool = this.tools[name as keyof typeof this.tools];
+    if (tool) {
+      tool.remove();
+      delete this.tools[name as keyof typeof this.tools];
+    }
   }
 } 
