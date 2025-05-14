@@ -12,10 +12,14 @@
     "test": "jest --config jest.config.ts",
     "test:integration": "npm run build:electron && playwright test",
     "test:watch": "jest --watch",
+    "test:mcp": "jest --config jest.mcp.config.ts",
     "build:electron": "tsc -p electron/tsconfig.json",
     "watch:electron": "tsc -p electron/tsconfig.json -w"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "^0.1.0",
+    "@modelcontextprotocol/protocol": "^0.1.0",
+    "@modelcontextprotocol/server": "^0.1.0",
     "@prisma/client": "^6.7.0",
     "@types/classnames": "^2.3.0",
     "classnames": "^2.5.1",

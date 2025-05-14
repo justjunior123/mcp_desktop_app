@@ -55,6 +55,25 @@ const config: Config.InitialOptions = {
         '^@/(.*)$': '<rootDir>/src/$1',
       },
     },
+    {
+      displayName: 'MCP',
+      testEnvironment: 'node',
+      testMatch: [
+        '<rootDir>/tests/mcp/**/*.test.{ts,tsx}'
+      ],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.mcp.ts'],
+      moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+      },
+      transform: {
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          tsconfig: 'tsconfig.json'
+        }]
+      },
+      transformIgnorePatterns: [
+        'node_modules/(?!(@modelcontextprotocol)/)'
+      ]
+    }
   ],
 };
 
