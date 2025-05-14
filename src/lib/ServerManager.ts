@@ -8,16 +8,19 @@ import { EventEmitter } from 'events';
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { ProcessMonitor, ProcessStats } from './ProcessMonitor';
 
 export class ServerManager extends EventEmitter {
   private servers: Map<string, ChildProcess>;
   private configs: Map<string, ServerConfig>;
+  private monitors: Map<string, ProcessMonitor>;
   private configPath: string;
 
   constructor(configPath: string) {
     super();
     this.servers = new Map();
     this.configs = new Map();
+    this.monitors = new Map();
     this.configPath = configPath;
   }
 
@@ -66,6 +69,20 @@ export class ServerManager extends EventEmitter {
 
       this.servers.set(id, serverProcess);
       
+      // Set up process monitoring
+      const monitor = new ProcessMonitor(serverProcess);
+      this.monitors.set(id, monitor);
+      
+      monitor.on('stats', (stats: ProcessStats) => {
+        this.emit('server:stats', { id, stats });
+      });
+
+      monitor.on('error', (error: Error) => {
+        this.emit('server:monitor:error', { id, error });
+      });
+
+      monitor.start();
+
       serverProcess.on('error', (error) => {
         this.emit('server:error', { id, error });
         this.configs.set(id, { ...config, status: 'error', lastError: error.message });
@@ -74,6 +91,9 @@ export class ServerManager extends EventEmitter {
 
       serverProcess.on('exit', (code) => {
         this.servers.delete(id);
+        this.monitors.get(id)?.stop();
+        this.monitors.delete(id);
+        
         if (code !== 0) {
           this.configs.set(id, { 
             ...config, 
@@ -107,6 +127,13 @@ export class ServerManager extends EventEmitter {
     const process = this.servers.get(id);
     if (!process) throw new Error(`Server ${id} is not running`);
 
+    // Stop monitoring before killing the process
+    const monitor = this.monitors.get(id);
+    if (monitor) {
+      monitor.stop();
+      this.monitors.delete(id);
+    }
+
     process.kill();
     this.servers.delete(id);
     
@@ -133,12 +160,15 @@ export class ServerManager extends EventEmitter {
       const startTime = config.lastStarted?.getTime() || Date.now();
       status.uptime = Date.now() - startTime;
       
-      // TODO: Implement memory usage and active connections tracking
-      status.memory = {
-        used: 0,
-        total: 0
-      };
-      status.activeConnections = 0;
+      // Add process stats if available
+      const monitor = this.monitors.get(id);
+      if (monitor) {
+        status.memory = {
+          used: 0, // Will be updated by monitor events
+          total: 0
+        };
+        status.activeConnections = 0; // Will be updated by server events
+      }
     }
 
     return status;

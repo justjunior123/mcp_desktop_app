@@ -3,13 +3,42 @@ import { LLMServerConfig, MCPServerConfig } from '../../src/types/server';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { jest } from '@jest/globals';
+import { EventEmitter } from 'events';
+import { ChildProcess } from 'child_process';
+
+// Create a proper mock process type that extends EventEmitter
+class MockProcess extends EventEmitter {
+  kill: jest.Mock;
+  pid: number;
+
+  constructor() {
+    super();
+    this.kill = jest.fn();
+    this.pid = 12345;
+  }
+}
+
+// Create a proper mock monitor type that extends EventEmitter
+class MockMonitor extends EventEmitter {
+  start: jest.Mock;
+  stop: jest.Mock;
+
+  constructor() {
+    super();
+    this.start = jest.fn();
+    this.stop = jest.fn();
+  }
+}
 
 jest.mock('child_process', () => ({
-  spawn: jest.fn().mockImplementation(() => ({
-    on: jest.fn(),
-    kill: jest.fn()
-  }))
+  spawn: jest.fn().mockImplementation(() => new MockProcess())
 }));
+
+jest.mock('../../src/lib/ProcessMonitor', () => {
+  return {
+    ProcessMonitor: jest.fn().mockImplementation(() => new MockMonitor())
+  };
+});
 
 describe('ServerManager', () => {
   let manager: ServerManager;
@@ -47,6 +76,9 @@ describe('ServerManager', () => {
     } catch (error) {
       // Ignore if file doesn't exist
     }
+    
+    // Clear all mocks
+    jest.clearAllMocks();
     
     manager = new ServerManager(testConfigPath);
     await manager.initialize();
@@ -106,8 +138,93 @@ describe('ServerManager', () => {
 
     it('prevents config updates while server is running', async () => {
       await manager.startServer(testLLMConfig.id);
-      await expect(manager.updateConfig(testLLMConfig.id, { port: 8002 }))
+      const updateConfig = {
+        ...testLLMConfig,
+        port: 8002
+      };
+      await expect(manager.updateConfig(testLLMConfig.id, updateConfig))
         .rejects.toThrow('Cannot update config while server');
+    });
+  });
+
+  describe('process monitoring', () => {
+    beforeEach(async () => {
+      await manager.updateConfig(testLLMConfig.id, testLLMConfig);
+    });
+
+    it('emits server stats events', async () => {
+      const mockStats = {
+        pid: 12345,
+        cpu: 5.5,
+        memory: {
+          rss: 1024,
+          heapTotal: 2048,
+          heapUsed: 1536
+        },
+        uptime: 1000
+      };
+
+      const statsPromise = new Promise<void>((resolve) => {
+        manager.on('server:stats', ({ id, stats }) => {
+          expect(id).toBe(testLLMConfig.id);
+          expect(stats).toEqual(mockStats);
+          resolve();
+        });
+      });
+
+      await manager.startServer(testLLMConfig.id);
+      
+      // Get the mock monitor
+      const { ProcessMonitor } = require('../../src/lib/ProcessMonitor');
+      const mockMonitor = ProcessMonitor.mock.results[0].value;
+      
+      // Emit stats
+      mockMonitor.emit('stats', mockStats);
+      
+      await statsPromise;
+    });
+
+    it('handles monitor errors gracefully', async () => {
+      const mockError = new Error('Monitor error');
+
+      const errorPromise = new Promise<void>((resolve) => {
+        manager.on('server:monitor:error', ({ id, error }) => {
+          expect(id).toBe(testLLMConfig.id);
+          expect(error).toBe(mockError);
+          resolve();
+        });
+      });
+
+      await manager.startServer(testLLMConfig.id);
+      
+      // Get the mock monitor
+      const { ProcessMonitor } = require('../../src/lib/ProcessMonitor');
+      const mockMonitor = ProcessMonitor.mock.results[0].value;
+      
+      // Emit error
+      mockMonitor.emit('error', mockError);
+      
+      await errorPromise;
+    });
+
+    it('stops monitoring when server is stopped', async () => {
+      await manager.startServer(testLLMConfig.id);
+      
+      // Get the mock monitor
+      const { ProcessMonitor } = require('../../src/lib/ProcessMonitor');
+      const mockMonitor = ProcessMonitor.mock.results[0].value;
+      
+      await manager.stopServer(testLLMConfig.id);
+      expect(mockMonitor.stop).toHaveBeenCalled();
+    });
+
+    it('includes memory stats in server status', async () => {
+      await manager.startServer(testLLMConfig.id);
+      const status = await manager.getStatus(testLLMConfig.id);
+      
+      expect(status.memory).toBeDefined();
+      expect(status.memory?.used).toBeDefined();
+      expect(status.memory?.total).toBeDefined();
     });
   });
 }); 
