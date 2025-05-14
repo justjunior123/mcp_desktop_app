@@ -9,36 +9,34 @@ import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ProcessMonitor, ProcessStats } from './ProcessMonitor';
+import { ConfigurationManager } from './ConfigurationManager';
 
 export class ServerManager extends EventEmitter {
   private servers: Map<string, ChildProcess>;
   private configs: Map<string, ServerConfig>;
   private monitors: Map<string, ProcessMonitor>;
-  private configPath: string;
+  private configManager: ConfigurationManager;
 
-  constructor(configPath: string) {
+  constructor(configDir: string) {
     super();
     this.servers = new Map();
     this.configs = new Map();
     this.monitors = new Map();
-    this.configPath = configPath;
+    this.configManager = new ConfigurationManager(configDir);
+
+    // Forward configuration events
+    this.configManager.on('config:updated', (event) => this.emit('config:updated', event));
+    this.configManager.on('config:deleted', (event) => this.emit('config:deleted', event));
   }
 
   async initialize(): Promise<void> {
-    try {
-      await fs.access(this.configPath);
-      const configData = await fs.readFile(this.configPath, 'utf-8');
-      const configs = JSON.parse(configData) as ServerConfig[];
-      configs.forEach(config => this.configs.set(config.id, config));
-    } catch (error) {
-      // If config file doesn't exist, create it
-      await fs.writeFile(this.configPath, JSON.stringify([], null, 2));
+    await this.configManager.initialize();
+    
+    // Load all configurations
+    const configs = await this.configManager.listConfigs();
+    for (const config of configs) {
+      this.configs.set(config.id, config);
     }
-  }
-
-  private async saveConfigs(): Promise<void> {
-    const configs = Array.from(this.configs.values());
-    await fs.writeFile(this.configPath, JSON.stringify(configs, null, 2));
   }
 
   async startServer(id: string): Promise<void> {
@@ -85,8 +83,7 @@ export class ServerManager extends EventEmitter {
 
       serverProcess.on('error', (error) => {
         this.emit('server:error', { id, error });
-        this.configs.set(id, { ...config, status: 'error', lastError: error.message });
-        this.saveConfigs();
+        this.updateServerStatus(id, 'error', error.message);
       });
 
       serverProcess.on('exit', (code) => {
@@ -95,30 +92,23 @@ export class ServerManager extends EventEmitter {
         this.monitors.delete(id);
         
         if (code !== 0) {
-          this.configs.set(id, { 
-            ...config, 
-            status: 'error', 
-            lastError: `Process exited with code ${code}` 
-          });
+          this.updateServerStatus(id, 'error', `Process exited with code ${code}`);
         } else {
-          this.configs.set(id, { ...config, status: 'stopped' });
+          this.updateServerStatus(id, 'stopped');
         }
-        this.saveConfigs();
+        
         this.emit('server:stopped', { id, code });
       });
 
       // Update config with running status
-      this.configs.set(id, { ...config, status: 'running', lastStarted: new Date() });
-      await this.saveConfigs();
-      
+      await this.updateServerStatus(id, 'running');
       this.emit('server:started', { id });
     } catch (error) {
-      this.configs.set(id, { 
-        ...config, 
-        status: 'error', 
-        lastError: error instanceof Error ? error.message : 'Unknown error' 
-      });
-      await this.saveConfigs();
+      await this.updateServerStatus(
+        id, 
+        'error', 
+        error instanceof Error ? error.message : 'Unknown error'
+      );
       throw error;
     }
   }
@@ -136,12 +126,7 @@ export class ServerManager extends EventEmitter {
 
     process.kill();
     this.servers.delete(id);
-    
-    const config = this.configs.get(id);
-    if (config) {
-      this.configs.set(id, { ...config, status: 'stopped' });
-      await this.saveConfigs();
-    }
+    await this.updateServerStatus(id, 'stopped');
   }
 
   async getStatus(id: string): Promise<ServerStatus> {
@@ -175,24 +160,43 @@ export class ServerManager extends EventEmitter {
   }
 
   async updateConfig(id: string, config: ServerConfig): Promise<void> {
-    // For new servers, just add them
+    // For new servers, validate and add them
     if (!this.configs.has(id)) {
-      this.configs.set(id, { ...config, status: 'stopped' });
-      await this.saveConfigs();
+      await this.configManager.saveConfig(config);
+      this.configs.set(id, config);
       return;
     }
 
     // For existing servers, check if they're running
-    const existingConfig = this.configs.get(id)!;
     if (this.servers.has(id)) {
       throw new Error(`Cannot update config while server ${id} is running`);
     }
 
-    this.configs.set(id, { ...existingConfig, ...config });
-    await this.saveConfigs();
+    // Validate and save the updated config
+    await this.configManager.saveConfig(config);
+    this.configs.set(id, config);
   }
 
   async listServers(): Promise<ServerConfig[]> {
     return Array.from(this.configs.values());
+  }
+
+  private async updateServerStatus(
+    id: string, 
+    status: 'running' | 'stopped' | 'error',
+    lastError?: string
+  ): Promise<void> {
+    const config = this.configs.get(id);
+    if (!config) return;
+
+    const updatedConfig = {
+      ...config,
+      status,
+      lastError,
+      lastStarted: status === 'running' ? new Date() : config.lastStarted
+    };
+
+    this.configs.set(id, updatedConfig);
+    await this.configManager.saveConfig(updatedConfig);
   }
 } 

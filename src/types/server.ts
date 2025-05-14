@@ -8,6 +8,7 @@ export interface ServerConfig {
   configPath: string;
   lastStarted?: Date;
   lastError?: string;
+  schemaVersion?: number;
 }
 
 export interface LLMServerConfig extends ServerConfig {
