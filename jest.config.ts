@@ -1,8 +1,7 @@
 import type { Config } from '@jest/types';
 
 const config: Config.InitialOptions = {
-  preset: 'ts-jest',
-  testEnvironment: 'jsdom',
+  preset: 'ts-jest/presets/default-esm',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
@@ -10,16 +9,12 @@ const config: Config.InitialOptions = {
   },
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: 'tsconfig.json',
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
       useESM: true,
-      jsx: 'react-jsx',
+      tsconfig: 'tsconfig.json',
     }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  testEnvironmentOptions: {
-    url: 'http://localhost/'
-  },
   verbose: true,
   testTimeout: 30000,
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
@@ -34,6 +29,32 @@ const config: Config.InitialOptions = {
   },
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|react-native-.*|@react-native-.*)/)',
+  ],
+  projects: [
+    {
+      displayName: 'DOM',
+      testEnvironment: 'jsdom',
+      testMatch: [
+        '<rootDir>/src/**/*.test.{ts,tsx}',
+        '<rootDir>/tests/integration/**/*.test.{ts,tsx}'
+      ],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+      moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+        '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+      },
+    },
+    {
+      displayName: 'NODE',
+      testEnvironment: 'node',
+      testMatch: [
+        '<rootDir>/tests/unit/**/*.test.{ts,tsx}'
+      ],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+      moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/src/$1',
+      },
+    },
   ],
 };
 

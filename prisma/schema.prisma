@@ -7,27 +7,57 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  email        String?      @unique
+  chatSessions ChatSession[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Settings {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model MCPServer {
-  id        String   @id @default(uuid())
-  name      String
-  status    String   @default("stopped") // running, stopped, error
-  port      Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  name        String
+  status      String   @default("stopped") // running, stopped, error
+  port        Int
+  host        String   @default("localhost")
+  maxRequests Int      @default(10)
+  timeout     Int      @default(30000)
+  model       Model    @relation(fields: [modelId], references: [id])
+  modelId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Model {
-  id        String   @id @default(uuid())
-  name      String
-  status    String   @default("not_installed") // installed, not_installed, downloading
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String        @id @default(uuid())
+  name         String
+  status       String       @default("not_installed") // installed, not_installed, downloading
+  parameters   String?      // JSON string of model parameters
+  servers      MCPServer[]
+  chatSessions ChatSession[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
 
 model ChatSession {
   id        String    @id @default(uuid())
   name      String
   messages  Message[]
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+  model     Model     @relation(fields: [modelId], references: [id])
+  modelId   String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -36,6 +66,7 @@ model Message {
   id            String      @id @default(uuid())
   content       String
   role          String      // user, assistant
+  metadata      String?     // JSON string for additional metadata
   chatSession   ChatSession @relation(fields: [chatSessionId], references: [id])
   chatSessionId String
   createdAt     DateTime    @default(now())

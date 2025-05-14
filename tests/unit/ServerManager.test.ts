@@ -1,17 +1,19 @@
+// Mock the modules before imports
+jest.mock('child_process');
+jest.mock('../../src/lib/ProcessMonitor');
+
 import { ServerManager } from '../../src/lib/ServerManager';
 import { LLMServerConfig, MCPServerConfig } from '../../src/types/server';
 import * as path from 'path';
 import * as fs from 'fs';
 import { promisify } from 'util';
-import { jest } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { EventEmitter } from 'events';
 import { ChildProcess } from 'child_process';
 
 const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
-const rmdir = promisify(fs.rmdir);
-const unlink = promisify(fs.unlink);
-const readdir = promisify(fs.readdir);
+const rm = promisify(fs.rm);
 const chmod = promisify(fs.chmod);
 const stat = promisify(fs.stat);
 
@@ -31,24 +33,43 @@ class MockProcess extends EventEmitter {
 class MockMonitor extends EventEmitter {
   start: jest.Mock;
   stop: jest.Mock;
+  private process: ChildProcess;
 
-  constructor() {
+  constructor(process: ChildProcess) {
     super();
-    this.start = jest.fn();
+    this.process = process;
+    this.start = jest.fn(() => {
+      // Simulate initial stats collection with the expected values
+      setTimeout(() => {
+        this.emit('stats', {
+          pid: this.process.pid,
+          cpu: 5.5,
+          memory: {
+            rss: 1024,
+            heapTotal: 2048,
+            heapUsed: 1536
+          },
+          uptime: 1000
+        });
+      }, 0);
+    });
     this.stop = jest.fn();
   }
 }
 
-// Mock the child_process spawn function
-jest.mock('child_process', () => ({
-  spawn: jest.fn(() => new MockProcess())
-}));
+// Create mock instances
+const mockProcess = new MockProcess();
+let mockMonitor: MockMonitor;
 
-// Mock the ProcessMonitor
-const mockMonitor = new MockMonitor();
-jest.mock('../../src/lib/ProcessMonitor', () => ({
-  ProcessMonitor: jest.fn(() => mockMonitor)
-}));
+// Set up mock implementations
+const childProcess = require('child_process');
+const ProcessMonitor = require('../../src/lib/ProcessMonitor').ProcessMonitor;
+
+childProcess.spawn = jest.fn(() => mockProcess);
+ProcessMonitor.mockImplementation((process: ChildProcess) => {
+  mockMonitor = new MockMonitor(process);
+  return mockMonitor;
+});
 
 describe('ServerManager', () => {
   let manager: ServerManager;
@@ -82,7 +103,6 @@ describe('ServerManager', () => {
   beforeEach(async () => {
     // Clear all mocks
     jest.clearAllMocks();
-    mockMonitor.removeAllListeners();
     
     // Create test directory and required files with proper permissions
     await mkdir(testConfigDir, { recursive: true });
@@ -97,56 +117,33 @@ describe('ServerManager', () => {
     await writeFile(testMCPConfig.configPath, JSON.stringify({ schemaVersion: 1 }));
     await chmod(testMCPConfig.configPath, 0o777);
     
+    // Create manager instance
     manager = new ServerManager(testConfigDir);
     await manager.initialize();
   });
 
   afterEach(async () => {
+    // Stop any running servers
     try {
-      // Clean up test directory
-      const files = await readdir(testConfigDir);
-      
-      // Change permissions and delete files
-      await Promise.all(
-        files.map(async (file) => {
-          const filePath = path.join(testConfigDir, file);
-          try {
-            const stats = await stat(filePath);
-            if (stats.isDirectory()) {
-              // Handle directories recursively
-              const subFiles = await readdir(filePath);
-              await Promise.all(
-                subFiles.map(async (subFile) => {
-                  const subPath = path.join(filePath, subFile);
-                  await chmod(subPath, 0o777);
-                  await unlink(subPath);
-                })
-              );
-              await chmod(filePath, 0o777);
-              await rmdir(filePath);
-            } else {
-              // Handle regular files
-              await chmod(filePath, 0o777);
-              await unlink(filePath);
-            }
-          } catch (error) {
-            console.warn(`Failed to delete ${file}:`, error);
-          }
-        })
-      );
-      
-      // Change directory permissions and remove it
-      try {
-        await chmod(testConfigDir, 0o777);
-        await rmdir(testConfigDir);
-      } catch (error: any) {
-        // If directory is not empty or already deleted, that's okay
-        if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') {
-          console.warn('Failed to remove test directory:', error);
-        }
-      }
+      await manager.stopServer(testLLMConfig.id);
     } catch (error) {
-      console.warn('Failed to clean up test directory:', error);
+      // Ignore errors if server wasn't running
+    }
+
+    try {
+      await manager.stopServer(testMCPConfig.id);
+    } catch (error) {
+      // Ignore errors if server wasn't running
+    }
+
+    // Clean up test directory
+    try {
+      // Use recursive removal with force option
+      await rm(testConfigDir, { recursive: true, force: true });
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') { // Ignore if directory doesn't exist
+        console.warn('Failed to clean up test directory:', error);
+      }
     }
   });
 
@@ -225,41 +222,66 @@ describe('ServerManager', () => {
         uptime: 1000
       };
 
+      // Create promise before starting server
       const statsPromise = new Promise<void>((resolve) => {
-        manager.on('server:stats', ({ id, stats }) => {
+        manager.once('server:stats', ({ id, stats }) => {
           expect(id).toBe(testLLMConfig.id);
           expect(stats).toEqual(mockStats);
           resolve();
         });
       });
 
+      // Start server
       await manager.startServer(testLLMConfig.id);
+
+      // Verify monitor was started
+      expect(mockMonitor.start).toHaveBeenCalledTimes(1);
+
+      // Emit stats event
       mockMonitor.emit('stats', mockStats);
       
-      await statsPromise;
-    });
+      // Wait for promise with a reasonable timeout
+      await expect(statsPromise).resolves.toBeUndefined();
+    }, 5000); // 5 second timeout
 
     it('handles monitor errors gracefully', async () => {
-      const mockError = new Error('Monitor error');
-
+      // Create promise before starting server
       const errorPromise = new Promise<void>((resolve) => {
-        manager.on('server:monitor:error', ({ id, error }) => {
+        manager.once('server:monitor:error', ({ id, error }) => {
           expect(id).toBe(testLLMConfig.id);
-          expect(error).toBe(mockError);
+          expect(error.message).toBe('Monitor error');
           resolve();
         });
       });
 
+      // Start server
       await manager.startServer(testLLMConfig.id);
-      mockMonitor.emit('error', mockError);
+
+      // Verify monitor was started
+      expect(mockMonitor.start).toHaveBeenCalledTimes(1);
+
+      // Emit error event
+      mockMonitor.emit('error', new Error('Monitor error'));
       
-      await errorPromise;
-    });
+      // Wait for promise with a reasonable timeout
+      await expect(errorPromise).resolves.toBeUndefined();
+    }, 5000); // 5 second timeout
 
     it('stops monitoring when server is stopped', async () => {
+      // Start server
       await manager.startServer(testLLMConfig.id);
+      
+      // Verify monitor was started
+      expect(mockMonitor.start).toHaveBeenCalledTimes(1);
+      
+      // Clear any previous calls to stop
+      mockMonitor.stop.mockClear();
+      
+      // Stop server
       await manager.stopServer(testLLMConfig.id);
-      expect(mockMonitor.stop).toHaveBeenCalled();
+      
+      // Verify stop was called
+      expect(mockMonitor.stop).toHaveBeenCalledTimes(1);
     });
 
     it('includes memory stats in server status', async () => {
