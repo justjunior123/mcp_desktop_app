@@ -1,14 +1,14 @@
 import { app, BrowserWindow } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { setupServer } from './server.js';
+import { setupServer, cleanup } from './server.js';
 import { logger } from '../src/services/logging/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
-let serverInstance: any = null;
+let serverInstance: Awaited<ReturnType<typeof setupServer>> | null = null;
 
 const isDev = process.env.NODE_ENV === 'development';
 const NEXT_PORT = process.env.PORT || 3002;
@@ -106,7 +106,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (serverInstance) {
-    serverInstance.close();
+    cleanup(serverInstance.services);
     logger.info('Express server closed');
   }
 }); 

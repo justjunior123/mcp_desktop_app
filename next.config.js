@@ -12,28 +12,33 @@ const nextConfig = {
     return config;
   },
   
-  // Add API route config if needed
+  // Remove output: export since we want to use API routes in development
+  // output: 'export',
+  
+  // Add API route config
   async rewrites() {
-    return process.env.NODE_ENV === 'development' 
-      ? [
-          {
-            source: '/api/models/:path*',
-            destination: 'http://localhost:3100/api/models/:path*',
-          },
-          {
-            source: '/api/:path*',
-            destination: 'http://localhost:3100/api/:path*',
-          }
-        ]
-      : [];
+    if (process.env.NODE_ENV === 'development') {
+      return [
+        {
+          source: '/api/models/:path*',
+          destination: 'http://localhost:3100/api/models/:path*'
+        },
+        {
+          source: '/api/health',
+          destination: 'http://localhost:3100/api/health'
+        },
+        {
+          source: '/api/ws',
+          destination: 'http://localhost:3100/ws'
+        }
+      ];
+    }
+    return [];
   },
   
-  // Output configuration for Electron
-  output: 'export',
-  
-  // Disable server-side features not needed in Electron
+  // Disable image optimization since we're using Electron
   images: {
-    unoptimized: true,
+    unoptimized: true
   }
 };
 
