@@ -101,7 +101,7 @@ const ModelsPage: React.FC = () => {
         throw new Error(`Error fetching models: ${response.statusText}`);
       }
       const data = await response.json();
-      setModels(data);
+      setModels(data.models || []);
       setLoading(false);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unknown error fetching models');
@@ -164,8 +164,8 @@ const ModelsPage: React.FC = () => {
       if (!response.ok) {
         throw new Error(`Error fetching model details: ${response.statusText}`);
       }
-      const model = await response.json();
-      setSelectedModel(model);
+      const data = await response.json();
+      setSelectedModel(data.model || null);
       setViewMode('details');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unknown error fetching model details');

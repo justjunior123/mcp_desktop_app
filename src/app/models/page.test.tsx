@@ -76,16 +76,20 @@ describe('ModelsPage', () => {
       if (url === '/api/models') {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve([
-            { id: 'model-1', name: 'test-model', status: 'installed' },
-          ]),
+          json: () => Promise.resolve({
+            models: [
+              { id: 'model-1', name: 'test-model', status: 'installed' },
+            ]
+          }),
         });
       }
       
       if (url === '/api/models/model-1') {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ id: 'model-1', name: 'test-model', status: 'installed' }),
+          json: () => Promise.resolve({
+            model: { id: 'model-1', name: 'test-model', status: 'installed' }
+          }),
         });
       }
       

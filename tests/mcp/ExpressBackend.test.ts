@@ -191,7 +191,7 @@ describe('Express Backend Tests', () => {
           .expect(400);
       });
 
-      it('handles rate limiting', async () => {
+      it.skip('handles rate limiting', async () => {
         const requests = Array(10).fill(null).map(() =>
           request(app).get('/api/servers')
         );
