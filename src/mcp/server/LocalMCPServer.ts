@@ -7,8 +7,11 @@ export class LocalMCPServer {
     echo?: ReturnType<MCPServer['tool']>;
     systemInfo?: ReturnType<MCPServer['tool']>;
   } = {};
+  private isRunning: boolean = false;
+  private port: number;
 
   constructor(port: number = 3100) {
+    this.port = port;
     this.server = new MCPServer({
       port,
       name: "mcp-desktop-local",
@@ -64,15 +67,52 @@ export class LocalMCPServer {
   }
 
   public async start(): Promise<void> {
-    await this.server.start();
+    if (this.isRunning) {
+      return;
+    }
+    
+    try {
+      await this.server.start();
+      this.isRunning = true;
+    } catch (error) {
+      this.isRunning = false;
+      throw error;
+    }
   }
 
   public async stop(): Promise<void> {
-    await this.server.stop();
+    if (!this.isRunning) {
+      return;
+    }
+
+    try {
+      await this.server.stop();
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  public async cleanup(): Promise<void> {
+    try {
+      if (this.isRunning) {
+        await this.stop();
+      }
+      // Cleanup tools
+      Object.keys(this.tools).forEach(toolName => {
+        this.removeTool(toolName);
+      });
+      this.tools = {};
+    } catch (error) {
+      console.error(`Error during cleanup of server on port ${this.port}:`, error);
+    }
   }
 
   public getPort(): number {
-    return this.server['port'];
+    return this.port;
+  }
+
+  public isServerRunning(): boolean {
+    return this.isRunning;
   }
 
   public getServer(): MCPServer {

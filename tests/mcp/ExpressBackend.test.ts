@@ -37,19 +37,25 @@ describe('Express Backend Tests', () => {
 
   beforeEach(async () => {
     createdServerIds = [];
+    // Ensure cleanup from previous tests
     await Promise.all((await manager.listServers()).map(s => cleanupServer(s.id)));
+    jest.clearAllMocks();
   });
 
   afterEach(async () => {
     // Clean up any servers created during the test
     await Promise.all(createdServerIds.map(cleanupServer));
     createdServerIds = [];
+    // Use setImmediate instead of setTimeout for cleanup delays
+    await new Promise(resolve => setImmediate(resolve));
   });
 
   afterAll(async () => {
     // Final cleanup
     await Promise.all((await manager.listServers()).map(s => cleanupServer(s.id)));
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await manager.cleanup();
+    // Use setImmediate instead of setTimeout for cleanup delays
+    await new Promise(resolve => setImmediate(resolve));
   });
 
   // Helper function to track created servers

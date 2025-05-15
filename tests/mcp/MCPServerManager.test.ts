@@ -1,21 +1,32 @@
 import { DatabaseService } from '../../src/services/database/DatabaseService';
 import { MCPServerManager } from '../../src/mcp/server/MCPServerManager';
+import { MCPServer, Model } from '@prisma/client';
 import { createTestModel } from '../helpers/database';
 
 describe('MCPServerManager', () => {
   let db: DatabaseService;
   let manager: MCPServerManager;
-  let testModel: { id: string };
+  let testModel: Model;
 
   beforeAll(async () => {
     db = new DatabaseService();
     manager = new MCPServerManager(db);
-    testModel = await createTestModel('Test Model');
+    
+    // Create a test model that will be used by all tests
+    testModel = await db.createModel({
+      name: 'Test Model',
+      status: 'installed',
+      parameters: JSON.stringify({
+        contextSize: 2048,
+        temperature: 0.7
+      })
+    });
   });
 
   beforeEach(async () => {
     // Clean up any existing servers
-    await manager.cleanup();
+    const servers = await manager.listServers();
+    await Promise.all(servers.map(s => manager.deleteServer(s.id)));
   });
 
   afterEach(async () => {
@@ -24,7 +35,8 @@ describe('MCPServerManager', () => {
   });
 
   afterAll(async () => {
-    // Final cleanup
+    // Clean up test model
+    await db.deleteModel(testModel.id);
     await manager.cleanup();
     // Add a small delay to ensure all servers are properly shut down
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -32,9 +44,10 @@ describe('MCPServerManager', () => {
 
   describe('Server Management', () => {
     it('creates a new server', async () => {
-      const server = await manager.createServer('Test Server', 3200, testModel.id);
+      const server = await manager.createServer('Test Server', 3201, testModel.id);
+      expect(server).toBeDefined();
       expect(server.name).toBe('Test Server');
-      expect(server.port).toBe(3200);
+      expect(server.port).toBe(3201);
       expect(server.status).toBe('stopped');
     });
 

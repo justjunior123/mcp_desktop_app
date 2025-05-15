@@ -12,6 +12,7 @@ export class MCPServer {
     enabled: boolean;
   }> = new Map();
   private info: ServerInfo;
+  private activeConnections = new Set<any>();
 
   constructor(options: { 
     port: number; 
@@ -154,25 +155,54 @@ export class MCPServer {
 
   public async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.httpServer = this.app.listen(this.port, () => {
-        console.log(`MCP Server listening on port ${this.port}`);
-        resolve();
-      });
+      try {
+        this.httpServer = this.app.listen(this.port, () => {
+          console.log(`MCP Server listening on port ${this.port}`);
+          resolve();
+        });
 
-      this.httpServer.on('error', reject);
+        // Track active connections
+        this.httpServer.on('connection', (conn) => {
+          this.activeConnections.add(conn);
+          conn.on('close', () => {
+            this.activeConnections.delete(conn);
+          });
+        });
+
+        this.httpServer.on('error', reject);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
   public async stop(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (this.httpServer) {
-        this.httpServer.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      } else {
+      if (!this.httpServer) {
         resolve();
+        return;
       }
+
+      // Close all active connections
+      for (const conn of this.activeConnections) {
+        conn.destroy();
+      }
+      this.activeConnections.clear();
+
+      // Close the server with a timeout
+      const closeTimeout = setTimeout(() => {
+        reject(new Error('Server close timeout'));
+      }, 5000).unref(); // Unref the timer so it doesn't keep the process alive
+
+      this.httpServer.close((err) => {
+        clearTimeout(closeTimeout);
+        if (err) {
+          reject(err);
+        } else {
+          this.httpServer = null;
+          resolve();
+        }
+      });
     });
   }
 } 

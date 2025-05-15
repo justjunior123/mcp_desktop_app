@@ -113,11 +113,17 @@ export class MCPServerManager {
     }
 
     try {
-      await server.stop();
+      await Promise.race([
+        server.stop(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Server stop timeout')), 5000).unref()
+        )
+      ]);
+      await this.db.updateMCPServer(id, { status: 'stopped' });
     } catch (error) {
       console.error(`Error stopping server ${id}:`, error);
-    } finally {
-      await this.db.updateMCPServer(id, { status: 'stopped' });
+      await this.db.updateMCPServer(id, { status: 'error' });
+      throw error;
     }
   }
 
@@ -142,11 +148,17 @@ export class MCPServerManager {
     const server = this.servers.get(id);
     if (server) {
       try {
-        await server.stop();
+        await Promise.race([
+          server.cleanup(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Server cleanup timeout')), 5000).unref()
+          )
+        ]);
       } catch (error) {
-        console.error(`Error stopping server ${id} during deletion:`, error);
+        console.error(`Error cleaning up server ${id}:`, error);
+      } finally {
+        this.servers.delete(id);
       }
-      this.servers.delete(id);
     }
 
     try {
@@ -244,21 +256,16 @@ export class MCPServerManager {
     const server = await this.db.getMCPServer(id);
     if (!server) return null;
 
-    // Check if server instance exists and is running
     const instance = this.servers.get(id);
     if (!instance) {
       return server;
     }
 
-    // Update status if there's a mismatch
-    if (server.status === 'running') {
-      try {
-        // Try to get server port to check if it's responsive
-        instance.getPort();
-      } catch (error) {
-        await this.db.updateMCPServer(id, { status: 'error' });
-        return await this.db.getMCPServer(id);
-      }
+    // Update status based on actual server state
+    const currentStatus = instance.isServerRunning() ? 'running' : 'stopped';
+    if (server.status !== currentStatus) {
+      await this.db.updateMCPServer(id, { status: currentStatus });
+      return await this.db.getMCPServer(id);
     }
 
     return server;
@@ -269,6 +276,15 @@ export class MCPServerManager {
    */
   async cleanup(): Promise<void> {
     const servers = await this.listServers();
-    await Promise.all(servers.map(server => this.deleteServer(server.id)));
+    await Promise.all(
+      servers.map(async server => {
+        try {
+          await this.deleteServer(server.id);
+        } catch (error) {
+          console.error(`Error during cleanup of server ${server.id}:`, error);
+        }
+      })
+    );
+    this.servers.clear();
   }
 } 
