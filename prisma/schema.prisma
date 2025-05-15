@@ -40,14 +40,32 @@ model MCPServer {
 }
 
 model Model {
-  id           String        @id @default(uuid())
-  name         String
-  status       String       @default("not_installed") // installed, not_installed, downloading
-  parameters   String?      // JSON string of model parameters
-  servers      MCPServer[]
-  chatSessions ChatSession[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id                String             @id @default(uuid())
+  name              String
+  status            String             @default("not_installed") // installed, not_installed, downloading, error
+  parameters        String?            // JSON string of model parameters
+  servers           MCPServer[]
+  chatSessions      ChatSession[]
+  ollamaDetails     OllamaModelDetails?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model OllamaModelDetails {
+  id                String    @id @default(uuid())
+  model             Model     @relation(fields: [modelId], references: [id])
+  modelId           String    @unique
+  size              BigInt?  // Size in bytes
+  format            String?  // e.g., GGUF
+  family            String?  // e.g., Llama, Mistral
+  parameterSize     String?  // e.g., "7B", "13B"
+  quantizationLevel String?  // e.g., "Q4_K_M"
+  downloadProgress  Float     @default(0) // 0-100%
+  downloadStatus    String    @default("idle") // idle, downloading, completed, error
+  errorMessage      String?
+  digest            String?  // Model hash/digest
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model ChatSession {

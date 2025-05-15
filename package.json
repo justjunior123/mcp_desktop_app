@@ -19,6 +19,7 @@
   "dependencies": {
     "@prisma/client": "^6.7.0",
     "@types/classnames": "^2.3.0",
+    "@types/ws": "^8.18.1",
     "axios": "^1.6.2",
     "classnames": "^2.5.1",
     "electron": "^28.1.0",
@@ -28,7 +29,8 @@
     "prisma": "^6.7.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "ws": "^8.18.2"
   },
   "devDependencies": {
     "@babel/core": "^7.27.1",
@@ -38,6 +40,7 @@
     "@playwright/test": "^1.52.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^14.3.1",
+    "@testing-library/react-hooks": "^8.0.1",
     "@testing-library/user-event": "^14.6.1",
     "@types/axios": "^0.14.0",
     "@types/electron": "^1.6.10",

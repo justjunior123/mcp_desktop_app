@@ -1,5 +1,8 @@
 import { MCPServer } from './MCPServer';
 import { Tool } from '../types/protocol';
+import { OllamaService } from '../../services/ollama/OllamaService';
+import { OllamaBridge } from '../../services/ollama/OllamaBridge';
+import { logger } from '../../services/logging';
 
 export class LocalMCPServer {
   private server: MCPServer;
@@ -9,8 +12,10 @@ export class LocalMCPServer {
   } = {};
   private isRunning: boolean = false;
   private port: number;
+  private ollamaService?: OllamaService;
+  private ollamaBridge?: OllamaBridge;
 
-  constructor(port: number = 3100) {
+  constructor(port: number = 3100, ollamaBaseUrl: string = 'http://localhost:11434') {
     this.port = port;
     this.server = new MCPServer({
       port,
@@ -22,6 +27,10 @@ export class LocalMCPServer {
         resources: false
       }
     });
+
+    // Initialize Ollama service
+    this.ollamaService = new OllamaService(ollamaBaseUrl);
+    this.ollamaBridge = new OllamaBridge(this.server, this.ollamaService);
 
     // Setup basic tools
     this.registerDefaultTools();
@@ -72,8 +81,18 @@ export class LocalMCPServer {
     }
     
     try {
+      // Start the server first
       await this.server.start();
       this.isRunning = true;
+      
+      // Register Ollama tools if available
+      if (this.ollamaBridge) {
+        try {
+          await this.ollamaBridge.registerTools();
+        } catch (error) {
+          logger.warn('Failed to register Ollama tools but server is running', { error });
+        }
+      }
     } catch (error) {
       this.isRunning = false;
       throw error;
@@ -86,6 +105,16 @@ export class LocalMCPServer {
     }
 
     try {
+      // Clean up Ollama tools first
+      if (this.ollamaBridge) {
+        try {
+          this.ollamaBridge.cleanup();
+        } catch (error) {
+          logger.warn('Error cleaning up Ollama tools', { error });
+        }
+      }
+      
+      // Stop the server
       await this.server.stop();
     } finally {
       this.isRunning = false;
@@ -103,7 +132,24 @@ export class LocalMCPServer {
       });
       this.tools = {};
     } catch (error) {
-      console.error(`Error during cleanup of server on port ${this.port}:`, error);
+      logger.error(`Error during cleanup of server on port ${this.port}:`, { error });
+    }
+  }
+
+  /**
+   * Update Ollama tools when models change
+   * This should be called when models are added or removed
+   */
+  public async updateOllamaTools(): Promise<void> {
+    if (!this.isRunning || !this.ollamaBridge) {
+      return;
+    }
+    
+    try {
+      await this.ollamaBridge.updateTools();
+    } catch (error) {
+      logger.error('Failed to update Ollama tools', { error });
+      throw error;
     }
   }
 
@@ -117,6 +163,10 @@ export class LocalMCPServer {
 
   public getServer(): MCPServer {
     return this.server;
+  }
+
+  public getOllamaService(): OllamaService | undefined {
+    return this.ollamaService;
   }
 
   // Tool management methods
