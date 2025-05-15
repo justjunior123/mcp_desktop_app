@@ -1,31 +1,39 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Configure webpack to handle certain file types and babel config
-  webpack: (config, { isServer }) => {
-    // Ensure babel-loader ignores .cjs files
-    if (config.module && config.module.rules) {
-      const babelRule = config.module.rules.find((rule) => {
-        return rule.test && rule.test.toString().includes('jsx');
-      });
-      
-      if (babelRule) {
-        babelRule.exclude = [/node_modules/, /\.cjs$/];
-      }
-    }
+  
+  webpack: (config) => {
+    // Handle ESM modules properly
+    config.resolve.extensionAlias = {
+      '.js': ['.js', '.ts', '.tsx'],
+      '.jsx': ['.jsx', '.tsx']
+    };
     
     return config;
   },
   
   // Add API route config if needed
   async rewrites() {
-    return [
-      // Forward API requests to our Express backend if necessary
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:3001/api/:path*',
-      }
-    ];
+    return process.env.NODE_ENV === 'development' 
+      ? [
+          {
+            source: '/api/models/:path*',
+            destination: 'http://localhost:3100/api/models/:path*',
+          },
+          {
+            source: '/api/:path*',
+            destination: 'http://localhost:3100/api/:path*',
+          }
+        ]
+      : [];
+  },
+  
+  // Output configuration for Electron
+  output: 'export',
+  
+  // Disable server-side features not needed in Electron
+  images: {
+    unoptimized: true,
   }
 };
 

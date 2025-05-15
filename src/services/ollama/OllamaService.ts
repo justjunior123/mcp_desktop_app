@@ -1,6 +1,7 @@
 import { OllamaClient } from './OllamaClient';
 import { ChatMessage, GenerateRequest, ModelInfo } from './types';
 import { logger } from '../logging';
+import { WebSocket } from 'ws';
 
 /**
  * Service for managing Ollama integration with the MCP application.
@@ -9,6 +10,8 @@ export class OllamaService {
   private client: OllamaClient;
   private models: ModelInfo[] = [];
   private defaultModel: string | null = null;
+  private baseUrl: string;
+  private ws: WebSocket | null = null;
 
   /**
    * Creates a new Ollama service.
@@ -16,6 +19,7 @@ export class OllamaService {
    * @param timeoutMs Optional timeout in milliseconds
    */
   constructor(baseUrl: string = 'http://localhost:11434', timeoutMs?: number) {
+    this.baseUrl = baseUrl;
     this.client = new OllamaClient({ baseUrl, timeoutMs });
     logger.info('OllamaService initialized', { baseUrl });
   }
@@ -232,5 +236,94 @@ export class OllamaService {
    */
   public getDefaultModel(): string | null {
     return this.defaultModel;
+  }
+
+  async checkAvailability(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    const response = await fetch(`${this.baseUrl}/api/tags`);
+    if (!response.ok) {
+      throw new Error(`Failed to list models: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.models;
+  }
+
+  async getModelInfo(name: string): Promise<ModelInfo> {
+    const response = await fetch(`${this.baseUrl}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get model info: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  }
+
+  async deleteModel(name: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/delete`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete model: ${response.statusText}`);
+    }
+  }
+
+  async generateText(params: GenerateRequest): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to generate text: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.response;
+  }
+
+  async chat(params: ChatRequest): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to chat: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.message.content;
+  }
+
+  async getEmbedding(params: EmbeddingRequest): Promise<number[]> {
+    const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get embedding: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.embedding;
   }
 } 

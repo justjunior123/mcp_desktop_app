@@ -3,10 +3,10 @@ import { checkOllama } from '../../../../utils/dependencyChecker';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { modelId: string } }
 ) {
   try {
-    const modelId = params.id;
+    const modelId = params.modelId;
     
     // Check if Ollama is available
     const ollamaStatus = await checkOllama();
@@ -40,7 +40,7 @@ export async function GET(
       }
     });
   } catch (error) {
-    console.error(`Error getting model ${params.id}:`, error);
+    console.error(`Error getting model ${params.modelId}:`, error);
     return NextResponse.json({
       error: 'Failed to get model',
       details: error instanceof Error ? error.message : 'Unknown error',
@@ -50,10 +50,10 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { modelId: string } }
 ) {
   try {
-    const modelId = params.id;
+    const modelId = params.modelId;
     
     // Check if Ollama is available
     const ollamaStatus = await checkOllama();
@@ -73,7 +73,7 @@ export async function DELETE(
       message: `Model ${modelId} deleted`
     });
   } catch (error) {
-    console.error(`Error deleting model ${params.id}:`, error);
+    console.error(`Error deleting model ${params.modelId}:`, error);
     return NextResponse.json({
       error: 'Failed to delete model',
       details: error instanceof Error ? error.message : 'Unknown error',

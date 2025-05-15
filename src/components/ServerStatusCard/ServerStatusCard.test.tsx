@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ServerStatusCard } from './ServerStatusCard';
-import { ServerConfig, ServerStatus, LLMServerConfig } from '../../types/server';
+import { ServerStatus, LLMServerConfig } from '../../types/server';
 
 describe('ServerStatusCard', () => {
   const mockServer: LLMServerConfig = {

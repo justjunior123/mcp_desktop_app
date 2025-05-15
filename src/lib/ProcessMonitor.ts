@@ -1,6 +1,5 @@
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import * as os from 'os';
 
 export interface ProcessStats {
   pid: number;
@@ -55,16 +54,16 @@ export class ProcessMonitor extends EventEmitter {
    */
   private async collectStats(): Promise<void> {
     try {
-      const pid = this.process.pid;
-      if (!pid) {
+      const processId = this.process.pid;
+      if (!processId) {
         this.emit('error', new Error('Process PID not available'));
         return;
       }
 
       const stats: ProcessStats = {
-        pid,
-        cpu: await this.getCpuUsage(pid),
-        memory: await this.getMemoryUsage(pid),
+        pid: processId,
+        cpu: await this.getCpuUsage(),
+        memory: await this.getMemoryUsage(),
         uptime: Date.now() - this.startTime
       };
 
@@ -77,7 +76,7 @@ export class ProcessMonitor extends EventEmitter {
   /**
    * Get CPU usage for the process
    */
-  private async getCpuUsage(pid: number): Promise<number> {
+  private async getCpuUsage(): Promise<number> {
     // This is a simplified CPU calculation
     // For more accurate results, we'd need to track CPU time over intervals
     const usage = process.cpuUsage();
@@ -87,7 +86,7 @@ export class ProcessMonitor extends EventEmitter {
   /**
    * Get memory usage for the process
    */
-  private async getMemoryUsage(pid: number): Promise<ProcessStats['memory']> {
+  private async getMemoryUsage(): Promise<ProcessStats['memory']> {
     const usage = process.memoryUsage();
     return {
       rss: usage.rss,

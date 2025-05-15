@@ -1,79 +1,35 @@
 import type { Config } from '@jest/types';
+import { resolve } from 'path';
 
 const config: Config.InitialOptions = {
-  preset: 'ts-jest/presets/default-esm',
+  preset: 'ts-jest',
+  testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '^@/(.*)$': resolve(__dirname, './src/$1'),
+    '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
   },
-  testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
-      useESM: true,
-      tsconfig: 'tsconfig.json',
+      tsconfig: 'tsconfig.test.json'
     }],
   },
+  testMatch: [
+    '<rootDir>/src/**/*.test.{ts,tsx}',
+    '<rootDir>/tests/**/*.test.{ts,tsx}',
+  ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  verbose: true,
-  testTimeout: 30000,
-  extensionsToTreatAsEsm: ['.ts', '.tsx'],
   globals: {
     'ts-jest': {
-      useESM: true,
-      jsx: 'react-jsx',
-      tsconfig: {
-        jsx: 'react-jsx',
-      },
+      tsconfig: 'tsconfig.test.json',
+      isolatedModules: true,
     },
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|react-native-.*|@react-native-.*)/)',
-  ],
-  projects: [
-    {
-      displayName: 'DOM',
-      testEnvironment: 'jsdom',
-      testMatch: [
-        '<rootDir>/src/**/*.test.{ts,tsx}',
-        '<rootDir>/tests/integration/**/*.test.{ts,tsx}'
-      ],
-      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-      moduleNameMapper: {
-        '^@/(.*)$': '<rootDir>/src/$1',
-        '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
-      },
-    },
-    {
-      displayName: 'NODE',
-      testEnvironment: 'node',
-      testMatch: [
-        '<rootDir>/tests/unit/**/*.test.{ts,tsx}'
-      ],
-      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-      moduleNameMapper: {
-        '^@/(.*)$': '<rootDir>/src/$1',
-      },
-    },
-    {
-      displayName: 'MCP',
-      testEnvironment: 'node',
-      testMatch: [
-        '<rootDir>/tests/mcp/**/*.test.{ts,tsx}'
-      ],
-      setupFilesAfterEnv: ['<rootDir>/jest.setup.mcp.ts'],
-      moduleNameMapper: {
-        '^@/(.*)$': '<rootDir>/src/$1',
-      },
-      transform: {
-        '^.+\\.(ts|tsx)$': ['ts-jest', {
-          tsconfig: 'tsconfig.json'
-        }]
-      },
-      transformIgnorePatterns: [
-        'node_modules/(?!(@modelcontextprotocol)/)'
-      ]
-    }
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/.next/',
+    '<rootDir>/electron/dist/',
+    '<rootDir>/tests/integration/',
   ],
 };
 

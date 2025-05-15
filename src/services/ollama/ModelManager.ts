@@ -10,15 +10,15 @@ import { prisma } from '../database/client';
 export interface OllamaModelDetails {
   id: string;
   modelId: string;
-  size?: bigint;
-  format?: string;
-  family?: string;
-  parameterSize?: string;
-  quantizationLevel?: string;
+  size?: bigint | null;
+  format?: string | null;
+  family?: string | null;
+  parameterSize?: string | null;
+  quantizationLevel?: string | null;
   downloadProgress: number;
   downloadStatus: string;
-  errorMessage?: string;
-  digest?: string;
+  errorMessage?: string | null;
+  digest?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -139,11 +139,11 @@ export class ModelManager extends EventEmitter {
   private async getOllamaDetails(modelId: string): Promise<OllamaModelDetails | null> {
     try {
       // We'll use raw query since the OllamaModelDetails table might not exist yet
-      const details: any[] = await prisma.$queryRaw`
+      const details = await prisma.$queryRaw<OllamaModelDetails[]>`
         SELECT * FROM OllamaModelDetails WHERE modelId = ${modelId}
       `;
       
-      return details.length > 0 ? details[0] as OllamaModelDetails : null;
+      return details.length > 0 ? details[0] : null;
     } catch (error) {
       // If table doesn't exist yet, just return null
       return null;
@@ -188,7 +188,7 @@ export class ModelManager extends EventEmitter {
   private async fetchAndUpdateModelDetails(modelId: string, ollamaModel: ModelInfo): Promise<OllamaModelDetails> {
     try {
       // Get detailed model info from Ollama
-      const details = await this.ollamaService.generateCompletion(ollamaModel.name, "");
+      const modelInfo = await this.ollamaService.generateCompletion(ollamaModel.name, "");
       
       // Parse size and format information
       let family: string | undefined;
@@ -198,53 +198,47 @@ export class ModelManager extends EventEmitter {
       // Try to extract information from model name, which often follows the format: 
       // modelFamily:parameterSize-quantizationLevel
       // Examples: llama2:7b-q4_0, mixtral:8x7b-instruct-q5_K_M, etc.
-      const nameParts = ollamaModel.name.split(':');
-      if (nameParts.length > 1) {
-        family = nameParts[0];
-        
-        const versionParts = nameParts[1].split('-');
+      const modelParts = ollamaModel.name.split(':');
+      if (modelParts.length > 1) {
+        family = modelParts[0];
+        const versionParts = modelParts[1].split('-');
         if (versionParts.length > 0) {
           parameterSize = versionParts[0];
-          
-          // Check for quantization info (q4_0, q8_0, etc.)
-          for (let i = 1; i < versionParts.length; i++) {
-            if (/^q\d+/.test(versionParts[i])) {
-              quantizationLevel = versionParts[i];
-              break;
+          if (versionParts.length > 1) {
+            const lastPart = versionParts[versionParts.length - 1];
+            if (lastPart.startsWith('q')) {
+              quantizationLevel = lastPart;
             }
           }
         }
       }
-      
-      // Create or update model details - using raw SQL for now
-      await prisma.$executeRaw`
-        INSERT INTO OllamaModelDetails (
-          id, modelId, size, family, parameterSize, 
-          quantizationLevel, downloadStatus, downloadProgress, 
-          createdAt, updatedAt
-        ) 
-        VALUES (
-          uuid(), ${modelId}, ${ollamaModel.size ? BigInt(ollamaModel.size) : null}, 
-          ${family}, ${parameterSize}, ${quantizationLevel},
-          'completed', 100, datetime('now'), datetime('now')
-        )
-        ON CONFLICT(modelId) DO UPDATE SET
-          size = ${ollamaModel.size ? BigInt(ollamaModel.size) : null},
-          family = ${family},
-          parameterSize = ${parameterSize},
-          quantizationLevel = ${quantizationLevel},
-          downloadStatus = 'completed',
-          downloadProgress = 100,
-          updatedAt = datetime('now')
-      `;
-      
-      // Get the updated record
-      const modelDetails = await this.getOllamaDetails(modelId);
-      
-      this.logger.info(`Updated model details for ${ollamaModel.name}`, { modelId });
-      return modelDetails as OllamaModelDetails;
+
+      // Create or update the details in the database
+      const details: OllamaModelDetails = await prisma.ollamaModelDetails.upsert({
+        where: { modelId },
+        create: {
+          modelId,
+          family,
+          parameterSize,
+          quantizationLevel,
+          downloadProgress: 100,
+          downloadStatus: 'installed',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        update: {
+          family,
+          parameterSize,
+          quantizationLevel,
+          downloadProgress: 100,
+          downloadStatus: 'installed',
+          updatedAt: new Date(),
+        },
+      });
+
+      return details;
     } catch (error) {
-      this.logger.error(`Error fetching model details for ${ollamaModel.name}`, { modelId, error });
+      this.logger.error(`Error fetching model details for ${ollamaModel.name}`, { error });
       throw error;
     }
   }

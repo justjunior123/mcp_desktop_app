@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { ModelList } from '../../components/models/ModelList';
+import React, { useState, useEffect, Suspense } from 'react';
+import { ModelList } from '@/components/models/ModelList';
 import { ModelDetails } from '../../components/models/ModelDetails';
 import { ModelConfigForm } from '../../components/models/ModelConfigForm';
 import { useWebSocket } from '../../lib/hooks/useWebSocket';
 import { Model } from '@prisma/client';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
+import { ModelActions } from '@/components/models/ModelActions';
+import { ServerStatusCard } from '@/components/ServerStatusCard';
 
 type ModelWithDetails = Model & { ollamaDetails?: OllamaModelDetails | null };
 type ViewMode = 'list' | 'details' | 'config';
@@ -19,7 +21,7 @@ const ModelsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // WebSocket connection for real-time updates
-  const { isConnected, sendMessage } = useWebSocket('/api/ws', {
+  const { sendMessage } = useWebSocket('ws://localhost:3100/ws', {
     onMessage: (message) => {
       if (message.type === 'initialStatus') {
         // Initial status with model list
@@ -52,7 +54,7 @@ const ModelsPage: React.FC = () => {
   });
 
   // Update model status in the list
-  const updateModelStatus = (update: any) => {
+  const updateModelStatus = (update: { modelId: string; status: string; downloadProgress?: number; error?: string }) => {
     setModels((prevModels) => {
       return prevModels.map((model) => {
         if (model.id === update.modelId) {
@@ -254,31 +256,26 @@ const ModelsPage: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
-          Ollama Models
-        </h1>
-        <div className="flex items-center space-x-2">
-          <div className={`h-3 w-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </span>
+      <h1 className="text-3xl font-bold mb-8">Model Management</h1>
+      
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="md:col-span-3">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Available Models</h2>
+              <ModelActions />
+            </div>
+            
+            <Suspense fallback={<div>Loading models...</div>}>
+              {renderContent()}
+            </Suspense>
+          </div>
+        </div>
+        
+        <div className="md:col-span-1">
+          <ServerStatusCard />
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 flex justify-between items-center">
-          <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-700 hover:text-red-900 focus:outline-none"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
-      {renderContent()}
     </div>
   );
 };

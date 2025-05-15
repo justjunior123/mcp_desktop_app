@@ -1,62 +1,88 @@
-import { NextResponse } from 'next/server';
-import { checkOllama } from '../../../utils/dependencyChecker';
+import { NextRequest, NextResponse } from 'next/server';
+import { ModelManager } from '@/services/ollama/ModelManager';
+import { DatabaseService } from '@/services/database/DatabaseService';
+import { OllamaService } from '@/services/ollama/OllamaService';
+import { logger } from '@/services/logging';
+import { z } from 'zod';
+
+const modelManager = new ModelManager(
+  new DatabaseService(),
+  new OllamaService()
+);
+
+// Input validation schemas
+const postModelSchema = z.object({
+  modelName: z.string().min(1, 'Model name is required')
+});
+
+// Error response helper
+function handleError(error: unknown, context: string) {
+  const errorObj = {
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    timestamp: new Date().toISOString()
+  };
+
+  logger.error(`Error in ${context}:`, errorObj);
+
+  if (error instanceof z.ZodError) {
+    return NextResponse.json({
+      error: 'Validation error',
+      details: error.errors
+    }, { status: 400 });
+  }
+
+  return NextResponse.json({
+    error: errorObj.message,
+    context
+  }, { status: 500 });
+}
 
 export async function GET() {
   try {
-    // Check if Ollama is available
-    const ollamaStatus = await checkOllama();
-    
-    if (!ollamaStatus.installed) {
-      return NextResponse.json({
-        error: 'Ollama is not installed',
-        code: 'DEPENDENCY_MISSING',
-        details: ollamaStatus,
-      }, { status: 503 }); // Service Unavailable
-    }
-    
-    if (!ollamaStatus.running) {
-      return NextResponse.json({
-        error: 'Ollama is not running',
-        code: 'DEPENDENCY_NOT_RUNNING',
-        details: ollamaStatus,
-      }, { status: 503 });
-    }
-    
-    // In a real implementation, we would connect to the ModelController here
-    // For now, return empty list with appropriate structure
-    return NextResponse.json({ 
-      models: [] 
-    });
+    logger.info('Fetching models list');
+    const models = await modelManager.listModelsWithDetails();
+    logger.info('Successfully fetched models list', { count: models.length });
+    return NextResponse.json({ models });
   } catch (error) {
-    console.error('Error fetching models:', error);
-    return NextResponse.json({
-      error: 'Failed to fetch models',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
+    return handleError(error, 'GET /api/models');
   }
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const ollamaStatus = await checkOllama();
+    const body = await request.json();
+    logger.info('Received model pull request', { body });
+
+    const { modelName } = postModelSchema.parse(body);
     
-    if (!ollamaStatus.installed || !ollamaStatus.running) {
-      return NextResponse.json({
-        error: !ollamaStatus.installed ? 'Ollama is not installed' : 'Ollama is not running',
-        code: !ollamaStatus.installed ? 'DEPENDENCY_MISSING' : 'DEPENDENCY_NOT_RUNNING',
-        details: ollamaStatus,
-      }, { status: 503 });
-    }
+    logger.info('Starting model pull', { modelName });
+    const model = await modelManager.pullModel(modelName);
+    logger.info('Successfully pulled model', { modelName, model });
     
-    // Not implemented yet, just return a meaningful response
-    return NextResponse.json({ 
-      error: 'Creating models is not implemented yet' 
-    }, { status: 501 }); // Not Implemented
+    return NextResponse.json({ model });
   } catch (error) {
-    console.error('Error creating model:', error);
-    return NextResponse.json({
-      error: 'Failed to create model',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
+    return handleError(error, 'POST /api/models');
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const modelId = searchParams.get('modelId');
+    logger.info('Received model delete request', { modelId });
+
+    if (!modelId) {
+      logger.warn('Model delete request missing modelId');
+      return NextResponse.json({ error: 'Model ID is required' }, { status: 400 });
+    }
+
+    logger.info('Starting model deletion', { modelId });
+    await modelManager.deleteModel(modelId);
+    logger.info('Successfully deleted model', { modelId });
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return handleError(error, 'DELETE /api/models');
   }
 } 

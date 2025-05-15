@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Model } from '@prisma/client';
-import { isValidJson } from '../../lib/utils';
 
 interface ModelConfigFormProps {
   model: Model;

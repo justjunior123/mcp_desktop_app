@@ -1,10 +1,42 @@
 .card {
-  background: #ffffff;
+  padding: 1rem;
   border-radius: 8px;
-  padding: 1.5rem;
+  background-color: #ffffff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-  border: 1px solid #e0e0e0;
+  margin-bottom: 1rem;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.online {
+  background-color: #4caf50;
+}
+
+.offline {
+  background-color: #f44336;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.details {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0.5rem 0 0;
 }
 
 .card:hover {
@@ -17,13 +49,6 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
-}
-
-.title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #2d3748;
 }
 
 .status {

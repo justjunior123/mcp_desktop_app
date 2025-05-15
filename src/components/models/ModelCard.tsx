@@ -3,8 +3,6 @@ import { Model } from '@prisma/client';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
 import { formatBytes } from '../../lib/utils';
 
-type ModelStatus = 'installed' | 'not_installed' | 'downloading' | 'error' | 'deleting';
-
 interface ModelCardProps {
   model: Model & { ollamaDetails?: OllamaModelDetails | null };
   onPull: (modelName: string) => void;

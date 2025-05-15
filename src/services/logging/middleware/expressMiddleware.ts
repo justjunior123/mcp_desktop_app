@@ -29,12 +29,21 @@ export interface RequestLoggingOptions {
   logResponseBody?: boolean;
 }
 
+interface ExtendedResponse extends Response {
+  _contentLength?: number;
+}
+
+// Extend Express Request interface
+export interface ExtendedRequest extends Request {
+  id?: string;
+}
+
 /**
  * Create Express middleware for request logging
  */
 export function createRequestLogger(logger: ILogger, options: RequestLoggingOptions = {}) {
   const opts = {
-    skip: (req: Request) => false,
+    skip: () => false,
     generateId: uuidv4,
     logBody: false,
     logHeaders: false,
@@ -42,7 +51,7 @@ export function createRequestLogger(logger: ILogger, options: RequestLoggingOpti
     ...options
   };
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: ExtendedRequest, res: Response, next: NextFunction) => {
     // Skip logging if requested
     if (opts.skip(req)) {
       return next();
@@ -62,37 +71,44 @@ export function createRequestLogger(logger: ILogger, options: RequestLoggingOpti
     
     // Track response timing and data
     const startTime = Date.now();
-    let responseBody: Buffer[] = [];
+    const responseBody: Buffer[] = [];
     let responseSize = 0;
     
     // Override write to capture response body if needed
     if (opts.logResponseBody) {
-      res.write = function(chunk: any, encoding?: BufferEncoding, callback?: (error: Error | null | undefined) => void): boolean {
+      // @ts-expect-error - Express types are not accurate for write method
+      res.write = function(chunk: any, encoding?: BufferEncoding | ((error: Error | null | undefined) => void), callback?: (error: Error | null | undefined) => void): boolean {
         if (Buffer.isBuffer(chunk)) {
           responseBody.push(chunk);
-        } else {
-          responseBody.push(Buffer.from(chunk));
+        } else if (chunk) {
+          responseBody.push(Buffer.from(String(chunk)));
         }
-        responseSize += chunk.length;
+        responseSize += Buffer.isBuffer(chunk) ? chunk.length : String(chunk).length;
+
+        // Handle overloaded method signature
+        if (typeof encoding === 'function') {
+          return originalWrite.call(res, chunk, encoding);
+        }
         return originalWrite.call(res, chunk, encoding, callback);
       };
     }
 
     // Override end to log after response is sent
-    res.end = function(chunk?: any, encoding?: BufferEncoding, callback?: () => void): Response {
+    // @ts-expect-error - Express types are not accurate for end method
+    res.end = function(chunk?: any, encoding?: string | (() => void), callback?: () => void): Response {
       const duration = Date.now() - startTime;
       
       if (chunk && opts.logResponseBody) {
         if (Buffer.isBuffer(chunk)) {
           responseBody.push(chunk);
         } else if (chunk) {
-          responseBody.push(Buffer.from(chunk));
+          responseBody.push(Buffer.from(String(chunk)));
         }
-        responseSize += chunk ? chunk.length : 0;
+        responseSize += chunk ? (Buffer.isBuffer(chunk) ? chunk.length : String(chunk).length) : 0;
       }
 
       // Create log context with request details
-      const context: Record<string, any> = {
+      const context: Record<string, unknown> = {
         method: req.method,
         url: req.originalUrl || req.url,
         status: res.statusCode,
@@ -100,7 +116,7 @@ export function createRequestLogger(logger: ILogger, options: RequestLoggingOpti
         duration,
         ip: req.ip || req.socket.remoteAddress,
         userAgent: req.get('user-agent'),
-        size: responseSize || (res as any)._contentLength,
+        size: responseSize || (res as ExtendedResponse)._contentLength,
       };
 
       // Add request headers if configured
@@ -140,7 +156,11 @@ export function createRequestLogger(logger: ILogger, options: RequestLoggingOpti
         requestLogger.info(`HTTP ${res.statusCode} ${req.method} ${req.originalUrl || req.url}`, context);
       }
 
-      return originalEnd.apply(res, [chunk, encoding, callback]);
+      // Handle overloaded method signature
+      if (typeof encoding === 'function') {
+        return originalEnd.call(res, chunk, encoding);
+      }
+      return originalEnd.call(res, chunk, encoding, callback);
     };
 
     // Log request start
@@ -159,9 +179,9 @@ export function createRequestLogger(logger: ILogger, options: RequestLoggingOpti
  * Create Express middleware for error logging
  */
 export function createErrorLogger(logger: ILogger) {
-  return (err: Error, req: Request, res: Response, next: NextFunction) => {
+  return (err: Error, req: ExtendedRequest, res: Response, next: NextFunction) => {
     // Get or create request ID
-    const reqId = (req as any).id || req.get('X-Request-ID') || uuidv4();
+    const reqId = req.id || req.get('X-Request-ID') || uuidv4();
     
     // Create error-specific logger
     const errorLogger = logger
@@ -186,10 +206,9 @@ export function createErrorLogger(logger: ILogger) {
 }
 
 // Add request ID to Express Request interface
+export {};
 declare global {
-  namespace Express {
-    interface Request {
-      id?: string;
-    }
+  interface Request {
+    id?: string;
   }
 } 

@@ -5,7 +5,7 @@ import { logger } from '../../services/logging';
 import { createRequestLogger, createErrorLogger } from '../../services/logging/middleware/expressMiddleware';
 
 type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
-type ErrorRequestHandler = (err: Error, req: Request, res: Response, next: NextFunction) => void;
+type ErrorRequestHandler = (err: Error, req: Request, res: Response) => void;
 
 export function setupExpressApp(manager: MCPServerManager): Express {
   const app = express();
@@ -222,7 +222,7 @@ export function setupExpressApp(manager: MCPServerManager): Express {
   app.delete('/api/servers/:id', deleteServer);
 
   // Error handling middleware
-  const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+  const errorHandler: ErrorRequestHandler = (err, req, res) => {
     console.error(err.stack);
     res.status(500).json({ error: 'Internal server error' });
   };

@@ -1,5 +1,4 @@
 import { LogLevel, LogEntry, LogTransport, LoggerConfig, ILogger } from './types';
-import path from 'path';
 
 /**
  * Core logger service that manages log transports and provides logging methods
@@ -9,7 +8,7 @@ export class LoggerService implements ILogger {
   private transports: Map<string, LogTransport> = new Map();
   private config: LoggerConfig;
   private category: string = 'app';
-  private context: Record<string, any> = {};
+  private context: Record<string, unknown> = {};
   private correlationId?: string;
 
   /**
@@ -53,42 +52,42 @@ export class LoggerService implements ILogger {
   /**
    * Log a message at DEBUG level
    */
-  public async debug(message: string, context?: Record<string, any>): Promise<void> {
+  public async debug(message: string, context?: Record<string, unknown>): Promise<void> {
     return this.log(LogLevel.DEBUG, message, context);
   }
 
   /**
    * Log a message at INFO level
    */
-  public async info(message: string, context?: Record<string, any>): Promise<void> {
+  public async info(message: string, context?: Record<string, unknown>): Promise<void> {
     return this.log(LogLevel.INFO, message, context);
   }
 
   /**
    * Log a message at WARN level
    */
-  public async warn(message: string, context?: Record<string, any>): Promise<void> {
+  public async warn(message: string, context?: Record<string, unknown>): Promise<void> {
     return this.log(LogLevel.WARN, message, context);
   }
 
   /**
    * Log a message at ERROR level
    */
-  public async error(message: string, context?: Record<string, any>): Promise<void> {
+  public async error(message: string, context?: Record<string, unknown>): Promise<void> {
     return this.log(LogLevel.ERROR, message, context);
   }
 
   /**
    * Log a message at FATAL level
    */
-  public async fatal(message: string, context?: Record<string, any>): Promise<void> {
+  public async fatal(message: string, context?: Record<string, unknown>): Promise<void> {
     return this.log(LogLevel.FATAL, message, context);
   }
 
   /**
    * Log an Error object with stack trace
    */
-  public async logError(error: Error, level: LogLevel = LogLevel.ERROR, context?: Record<string, any>): Promise<void> {
+  public async logError(error: Error, level: LogLevel = LogLevel.ERROR, context?: Record<string, unknown>): Promise<void> {
     return this.log(level, error.message, {
       ...context,
       stack: error.stack,
@@ -108,7 +107,7 @@ export class LoggerService implements ILogger {
   /**
    * Create a new logger with additional context
    */
-  public withContext(context: Record<string, any>): ILogger {
+  public withContext(context: Record<string, unknown>): ILogger {
     const logger = this.clone();
     logger.context = { ...this.context, ...context };
     return logger;
@@ -126,7 +125,7 @@ export class LoggerService implements ILogger {
   /**
    * Core logging method
    */
-  private async log(level: LogLevel, message: string, context?: Record<string, any>): Promise<void> {
+  private async log(level: LogLevel, message: string, context?: Record<string, unknown>): Promise<void> {
     const entry: LogEntry = {
       timestamp: new Date(),
       level,
@@ -138,7 +137,7 @@ export class LoggerService implements ILogger {
     };
 
     const promises = Array.from(this.transports.entries())
-      .filter(([name, _]) => {
+      .filter(([name]) => {
         const transportConfig = this.config.transports[name];
         // Skip if transport level is higher than log level
         if (this.getLevelValue(transportConfig.level) > this.getLevelValue(level)) {
@@ -150,7 +149,7 @@ export class LoggerService implements ILogger {
         }
         return true;
       })
-      .map(([_, transport]) => transport.log(entry).catch(err => {
+      .map(([, transport]) => transport.log(entry).catch(err => {
         console.error(`Error in log transport: ${err.message}`);
       }));
 
@@ -198,16 +197,15 @@ export class LoggerService implements ILogger {
     // Parse the caller line
     const match = callerLine.match(/at\s+(.*)\s+\((.*):(\d+):(\d+)\)/);
     if (match) {
-      const [_, functionName, filePath, line, column] = match;
-      const fileName = path.basename(filePath);
-      return `${fileName}:${line} (${functionName})`;
+      const [, , file, line] = match;
+      return `${file}:${line}`;
     }
     
-    return callerLine.trim();
+    return 'unknown';
   }
 
   /**
-   * Create a clone of this logger
+   * Create a clone of the current logger instance
    */
   private clone(): LoggerService {
     const logger = new LoggerService(this.config);

@@ -205,53 +205,44 @@ export class OllamaBridge {
           },
           system: {
             type: 'string',
-            description: 'Optional system prompt to guide the model'
+            description: 'Optional system prompt to guide the model behavior'
           },
-          options: {
-            type: 'object',
-            description: 'Optional generation parameters',
-            properties: {
-              temperature: {
-                type: 'number',
-                description: 'Temperature for text generation (0.0-2.0)'
-              },
-              num_predict: {
-                type: 'number',
-                description: 'Maximum number of tokens to generate'
-              }
-            }
+          temperature: {
+            type: 'number',
+            description: 'Sampling temperature (0.0 to 2.0)'
+          },
+          maxTokens: {
+            type: 'integer',
+            description: 'Maximum number of tokens to generate'
           }
         },
         required: ['prompt']
       },
       async (params) => {
-        const { prompt, system, options } = params as GenerateRequest;
-        
+        const { prompt, system, temperature, maxTokens } = params as {
+          prompt: string;
+          system?: string;
+          temperature?: number;
+          maxTokens?: number;
+        };
+
         try {
-          const result = await this.ollamaService.generateText({
-            model: model.name,
+          const response = await this.ollamaService.generateCompletion(
+            model.name,
             prompt,
-            system,
-            options
-          });
-          
-          return {
-            text: result.response,
-            metrics: {
-              total_duration: result.total_duration,
-              prompt_eval_count: result.prompt_eval_count,
-              eval_count: result.eval_count,
-              eval_duration: result.eval_duration
+            {
+              system,
+              temperature,
+              num_predict: maxTokens
             }
-          };
+          );
+          return { response };
         } catch (error) {
           logger.error('Error in generate tool', { model: model.name, error });
           throw new Error(`Failed to generate text: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
     );
-    
-    logger.debug(`Registered generate tool for model ${model.name}`);
   }
   
   /**
@@ -413,5 +404,66 @@ export class OllamaBridge {
     }
     
     this.registeredTools = {};
+  }
+
+  public async checkAvailability(): Promise<boolean> {
+    try {
+      const isOllamaAvailable = await this.ollamaService.isAvailable();
+      return isOllamaAvailable;
+    } catch (error) {
+      logger.error('Failed to check Ollama availability', { error });
+      return false;
+    }
+  }
+
+  public async listModels(): Promise<ModelInfo[]> {
+    try {
+      const models = await this.ollamaService.getModels();
+      return models;
+    } catch (error) {
+      logger.error('Failed to list models', { error });
+      throw error;
+    }
+  }
+
+  public async getModelInfo(name: string): Promise<any> {
+    try {
+      const modelInfo = await this.ollamaService.getModelDetails(name);
+      return modelInfo;
+    } catch (error) {
+      logger.error('Failed to get model info', { error });
+      throw error;
+    }
+  }
+
+  public async generateText(params: GenerateRequest): Promise<string> {
+    try {
+      const { prompt, system, options } = params;
+      const result = await this.ollamaService.generateCompletion(prompt, params.model, options);
+      return result;
+    } catch (error) {
+      logger.error('Failed to generate text', { error });
+      throw error;
+    }
+  }
+
+  public async chat(params: ChatRequest): Promise<string> {
+    try {
+      const result = await this.ollamaService.generateChatCompletion(params.messages, params.model, params.options);
+      return result;
+    } catch (error) {
+      logger.error('Failed to chat', { error });
+      throw error;
+    }
+  }
+
+  public async getEmbedding(params: EmbeddingRequest): Promise<number[]> {
+    try {
+      const result = await this.ollamaService.createEmbeddings(params.text, params.model);
+      return result;
+    } catch (error) {
+      logger.error('Failed to get embedding', { error });
+      throw error;
+    }
   }
 } 
