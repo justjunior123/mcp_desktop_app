@@ -16,7 +16,6 @@ type ViewMode = 'list' | 'details' | 'config';
 const ModelsPage: React.FC = () => {
   const [models, setModels] = useState<ModelWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelWithDetails | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
@@ -40,7 +39,7 @@ const ModelsPage: React.FC = () => {
         setViewMode('details');
       } else if (message.type === 'error') {
         // Error message
-        setError(message.payload.message);
+        console.error(message.payload.message);
       }
     },
     onConnect: () => {
@@ -106,7 +105,7 @@ const ModelsPage: React.FC = () => {
       setModels(data.models || []);
       setLoading(false);
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unknown error fetching models');
+      console.error(error instanceof Error ? error.message : 'Unknown error fetching models');
       setLoading(false);
     }
   };
@@ -128,7 +127,7 @@ const ModelsPage: React.FC = () => {
 
       // The WebSocket will update the model status
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unknown error pulling model');
+      console.error(error instanceof Error ? error.message : 'Unknown error pulling model');
     }
   };
 
@@ -155,7 +154,7 @@ const ModelsPage: React.FC = () => {
 
       // The WebSocket will update the model list
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unknown error deleting model');
+      console.error(error instanceof Error ? error.message : 'Unknown error deleting model');
     }
   };
 
@@ -170,7 +169,7 @@ const ModelsPage: React.FC = () => {
       setSelectedModel(data.model || null);
       setViewMode('details');
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unknown error fetching model details');
+      console.error(error instanceof Error ? error.message : 'Unknown error fetching model details');
     }
   };
 
@@ -202,7 +201,7 @@ const ModelsPage: React.FC = () => {
       // Refresh model details
       await handleViewDetails(modelId);
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unknown error saving parameters');
+      console.error(error instanceof Error ? error.message : 'Unknown error saving parameters');
       throw error;
     }
   };

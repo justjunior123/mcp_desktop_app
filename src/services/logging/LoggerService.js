@@ -172,9 +172,9 @@ export class LoggerService {
         // Parse the caller line
         const match = callerLine.match(/at\s+(.*)\s+\((.*):(\d+):(\d+)\)/);
         if (match) {
-            const [_, functionName, filePath, line, column] = match;
+            const [_, _functionName, filePath, line, _column] = match;
             const fileName = path.basename(filePath);
-            return `${fileName}:${line} (${functionName})`;
+            return `${fileName}:${line} (${_functionName})`;
         }
         return callerLine.trim();
     }
@@ -188,6 +188,73 @@ export class LoggerService {
         logger.context = { ...this.context };
         logger.correlationId = this.correlationId;
         return logger;
+    }
+    async getLogEntries(options = {}) {
+        const {
+            limit = 100,
+            offset = 0,
+            level,
+            source,
+            startTime,
+            endTime,
+            search
+        } = options;
+
+        const query = {};
+        const sort = { timestamp: -1 };
+
+        if (level) {
+            query.level = level;
+        }
+        if (source) {
+            query.source = source;
+        }
+        if (startTime || endTime) {
+            query.timestamp = {};
+            if (startTime) {
+                query.timestamp.$gte = new Date(startTime);
+            }
+            if (endTime) {
+                query.timestamp.$lte = new Date(endTime);
+            }
+        }
+        if (search) {
+            query.$text = { $search: search };
+        }
+
+        const logs = await this.collection.find(query)
+            .sort(sort)
+            .skip(offset)
+            .limit(limit)
+            .toArray();
+
+        return logs;
+    }
+
+    async getLogStats() {
+        const stats = {
+            totalCount: await this.collection.countDocuments(),
+            levelCounts: {},
+            sourceCounts: {}
+        };
+
+        const levelAggregation = await this.collection.aggregate([
+            { $group: { _id: '$level', count: { $sum: 1 } } }
+        ]).toArray();
+
+        const sourceAggregation = await this.collection.aggregate([
+            { $group: { _id: '$source', count: { $sum: 1 } } }
+        ]).toArray();
+
+        for (const { _id, count } of levelAggregation) {
+            if (_id) stats.levelCounts[_id] = count;
+        }
+
+        for (const { _id, count } of sourceAggregation) {
+            if (_id) stats.sourceCounts[_id] = count;
+        }
+
+        return stats;
     }
 }
 //# sourceMappingURL=LoggerService.js.map

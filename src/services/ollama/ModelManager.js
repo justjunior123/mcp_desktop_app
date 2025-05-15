@@ -238,54 +238,13 @@ export class ModelManager extends EventEmitter {
      * @param modelName Name of the model to pull
      */
     async pullModel(modelName) {
-        this.logger.info(`Pulling model: ${modelName}`);
         try {
-            // Check if model already exists in the database
-            let model = await prisma.model.findFirst({
-                where: { name: modelName }
-            });
-            // If not, create it
-            if (!model) {
-                model = await this.db.createModel({
-                    name: modelName,
-                    status: 'downloading'
-                });
-                // Create details record using raw query
-                await prisma.$executeRaw `
-          INSERT INTO OllamaModelDetails (
-            id, modelId, downloadStatus, downloadProgress, createdAt, updatedAt
-          ) 
-          VALUES (
-            uuid(), ${model.id}, 'downloading', 0, datetime('now'), datetime('now')
-          )
-        `;
-            }
-            else {
-                // Update existing model to downloading state
-                model = await this.updateModelStatus(model.id, 'downloading', 0);
-            }
-            // Start pull in the background and track progress
-            this.ollamaService.pullModel(modelName)
-                .then(result => {
-                this.logger.info(`Model pull completed: ${modelName}`);
-                this.updateModelStatus(model.id, 'installed', 100);
-                this.refreshModelStatuses().catch(e => this.logger.error('Error refreshing model status after pull', { error: e }));
-            })
-                .catch(error => {
-                this.logger.error(`Error pulling model: ${modelName}`, { error });
-                this.updateModelStatus(model.id, 'error', undefined, error instanceof Error ? error.message : 'Unknown error pulling model');
-            });
-            // Emit initial status
-            this.emitStatusUpdate({
-                modelId: model.id,
-                status: 'downloading',
-                downloadProgress: 0
-            });
+            const model = await this.ollamaService.pullModel(modelName);
+            await this.refreshModelStatuses();
             return model;
-        }
-        catch (error) {
-            this.logger.error(`Error starting model pull for ${modelName}`, { error });
-            throw error;
+        } catch (err) {
+            logger.error(`Failed to pull model ${modelName}:`, err);
+            throw err;
         }
     }
     /**
@@ -294,37 +253,11 @@ export class ModelManager extends EventEmitter {
      */
     async deleteModel(modelId) {
         try {
-            // Get the model from database
-            const model = await this.db.getModel(modelId);
-            if (!model) {
-                throw new Error(`Model with ID ${modelId} not found`);
-            }
-            this.logger.info(`Deleting model: ${model.name}`);
-            // Update status to indicate deletion in progress
-            await this.updateModelStatus(modelId, 'deleting');
-            try {
-                // Delete from Ollama
-                await this.ollamaService.generateCompletion(model.name, "");
-                // Update status to not installed
-                await this.updateModelStatus(modelId, 'not_installed');
-            }
-            catch (error) {
-                this.logger.error(`Error deleting model ${model.name} from Ollama`, { error });
-                // If the error suggests the model doesn't exist in Ollama, still mark as not installed
-                if (error instanceof Error &&
-                    (error.message.includes('not found') || error.message.includes('does not exist'))) {
-                    await this.updateModelStatus(modelId, 'not_installed');
-                }
-                else {
-                    // Otherwise mark as error
-                    await this.updateModelStatus(modelId, 'error', undefined, error instanceof Error ? error.message : 'Unknown error deleting model');
-                    throw error;
-                }
-            }
-        }
-        catch (error) {
-            this.logger.error(`Error in deleteModel for ID ${modelId}`, { error });
-            throw error;
+            await this.ollamaService.deleteModel(modelId);
+            await this.refreshModelStatuses();
+        } catch (err) {
+            logger.error(`Failed to delete model ${modelId}:`, err);
+            throw err;
         }
     }
     /**
@@ -337,14 +270,14 @@ export class ModelManager extends EventEmitter {
             if (!model) {
                 throw new Error(`Model with ID ${modelId} not found`);
             }
-            const details = await this.getOllamaDetails(modelId);
+            
+            const ollamaDetails = await this.getOllamaDetails(modelId);
             return {
                 ...model,
-                ollamaDetails: details
+                ollamaDetails
             };
-        }
-        catch (error) {
-            this.logger.error(`Error getting model with details: ${modelId}`, { error });
+        } catch (error) {
+            this.logger.error(`Error getting model details for ${modelId}`, { error });
             throw error;
         }
     }

@@ -1,7 +1,8 @@
 import { MCPServer } from '../../mcp/server/MCPServer';
 import { OllamaService } from './OllamaService';
-import { ChatMessage, GenerateRequest, ModelInfo } from './types';
+import { ChatMessage, GenerateRequest, ModelInfo, ChatRequest } from './types';
 import { logger } from '../logging';
+import { Tool } from '../../mcp/types/protocol';
 
 /**
  * Bridge between Ollama service and MCP tools
@@ -169,7 +170,7 @@ export class OllamaBridge {
   }
   
   /**
-   * Register tools for each available model (generate, chat, embeddings)
+   * Register tools for each available model (generate, chat)
    */
   private async registerModelSpecificTools(): Promise<void> {
     try {
@@ -178,7 +179,6 @@ export class OllamaBridge {
       for (const model of models) {
         this.registerGenerateToolForModel(model);
         this.registerChatToolForModel(model);
-        this.registerEmbeddingsToolForModel(model);
       }
       
       logger.info(`Registered specific tools for ${models.length} models`);
@@ -194,9 +194,10 @@ export class OllamaBridge {
   private registerGenerateToolForModel(model: ModelInfo): void {
     const toolName = `ollama.generate.${model.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
     
-    this.registeredTools[toolName] = this.mcpServer.tool(
-      toolName,
-      {
+    const tool: Tool = {
+      name: toolName,
+      description: `Generate text with ${model.name} model`,
+      parameters: {
         type: 'object',
         properties: {
           prompt: {
@@ -212,12 +213,17 @@ export class OllamaBridge {
             description: 'Sampling temperature (0.0 to 2.0)'
           },
           maxTokens: {
-            type: 'integer',
+            type: 'number',
             description: 'Maximum number of tokens to generate'
           }
         },
         required: ['prompt']
-      },
+      }
+    };
+
+    this.registeredTools[toolName] = this.mcpServer.tool(
+      toolName,
+      tool.parameters,
       async (params) => {
         const { prompt, system, temperature, maxTokens } = params as {
           prompt: string;
@@ -228,10 +234,9 @@ export class OllamaBridge {
 
         try {
           const response = await this.ollamaService.generateCompletion(
-            model.name,
             prompt,
+            model.name,
             {
-              system,
               temperature,
               num_predict: maxTokens
             }
@@ -251,120 +256,55 @@ export class OllamaBridge {
   private registerChatToolForModel(model: ModelInfo): void {
     const toolName = `ollama.chat.${model.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
     
-    this.registeredTools[toolName] = this.mcpServer.tool(
-      toolName,
-      {
+    const tool: Tool = {
+      name: toolName,
+      description: `Chat with ${model.name} model`,
+      parameters: {
         type: 'object',
         properties: {
           messages: {
-            type: 'array',
-            description: 'Array of chat messages',
-            items: {
-              type: 'object',
-              properties: {
-                role: {
-                  type: 'string',
-                  description: 'The role of the message sender (system, user, assistant)'
-                },
-                content: {
-                  type: 'string',
-                  description: 'The content of the message'
-                }
-              },
-              required: ['role', 'content']
-            }
+            type: 'string',
+            description: 'Array of chat messages'
           },
-          options: {
-            type: 'object',
-            description: 'Optional chat parameters',
-            properties: {
-              temperature: {
-                type: 'number',
-                description: 'Temperature for text generation (0.0-2.0)'
-              },
-              num_predict: {
-                type: 'number',
-                description: 'Maximum number of tokens to generate'
-              }
-            }
+          temperature: {
+            type: 'number',
+            description: 'Temperature for text generation (0.0-2.0)'
+          },
+          maxTokens: {
+            type: 'number',
+            description: 'Maximum number of tokens to generate'
           }
         },
         required: ['messages']
-      },
+      }
+    };
+
+    this.registeredTools[toolName] = this.mcpServer.tool(
+      toolName,
+      tool.parameters,
       async (params) => {
-        const { messages, options } = params as { 
-          messages: ChatMessage[], 
-          options?: Record<string, unknown> 
+        const { messages, temperature, maxTokens } = params as {
+          messages: ChatMessage[];
+          temperature?: number;
+          maxTokens?: number;
         };
-        
+
         try {
-          const result = await this.ollamaService.chat({
-            model: model.name,
+          const response = await this.ollamaService.generateChatCompletion(
             messages,
-            options
-          });
-          
-          return {
-            message: result.message,
-            metrics: {
-              total_duration: result.total_duration,
-              prompt_eval_count: result.prompt_eval_count,
-              eval_count: result.eval_count,
-              eval_duration: result.eval_duration
+            model.name,
+            {
+              temperature,
+              num_predict: maxTokens
             }
-          };
+          );
+          return { response };
         } catch (error) {
           logger.error('Error in chat tool', { model: model.name, error });
           throw new Error(`Failed to chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
     );
-    
-    logger.debug(`Registered chat tool for model ${model.name}`);
-  }
-  
-  /**
-   * Register embeddings tool for a specific model
-   */
-  private registerEmbeddingsToolForModel(model: ModelInfo): void {
-    const toolName = `ollama.embeddings.${model.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    
-    this.registeredTools[toolName] = this.mcpServer.tool(
-      toolName,
-      {
-        type: 'object',
-        properties: {
-          input: {
-            type: 'string',
-            description: 'The text to generate embeddings for'
-          }
-        },
-        required: ['input']
-      },
-      async (params) => {
-        const { input } = params as { input: string };
-        
-        try {
-          const result = await this.ollamaService.getEmbedding({
-            model: model.name,
-            prompt: input
-          });
-          
-          return {
-            embedding: result.embedding,
-            dimensions: result.embedding.length,
-            metrics: {
-              total_duration: result.total_duration
-            }
-          };
-        } catch (error) {
-          logger.error('Error in embeddings tool', { model: model.name, error });
-          throw new Error(`Failed to generate embeddings: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      }
-    );
-    
-    logger.debug(`Registered embeddings tool for model ${model.name}`);
   }
   
   /**
@@ -378,8 +318,7 @@ export class OllamaBridge {
       // Remove all existing model-specific tools
       for (const [name, tool] of Object.entries(this.registeredTools)) {
         if (name.startsWith('ollama.generate.') || 
-            name.startsWith('ollama.chat.') || 
-            name.startsWith('ollama.embeddings.')) {
+            name.startsWith('ollama.chat.')) {
           tool.remove();
           delete this.registeredTools[name];
         }
@@ -408,62 +347,10 @@ export class OllamaBridge {
 
   public async checkAvailability(): Promise<boolean> {
     try {
-      const isOllamaAvailable = await this.ollamaService.isAvailable();
-      return isOllamaAvailable;
+      return await this.ollamaService.isAvailable();
     } catch (error) {
       logger.error('Failed to check Ollama availability', { error });
       return false;
-    }
-  }
-
-  public async listModels(): Promise<ModelInfo[]> {
-    try {
-      const models = await this.ollamaService.getModels();
-      return models;
-    } catch (error) {
-      logger.error('Failed to list models', { error });
-      throw error;
-    }
-  }
-
-  public async getModelInfo(name: string): Promise<any> {
-    try {
-      const modelInfo = await this.ollamaService.getModelDetails(name);
-      return modelInfo;
-    } catch (error) {
-      logger.error('Failed to get model info', { error });
-      throw error;
-    }
-  }
-
-  public async generateText(params: GenerateRequest): Promise<string> {
-    try {
-      const { prompt, system, options } = params;
-      const result = await this.ollamaService.generateCompletion(prompt, params.model, options);
-      return result;
-    } catch (error) {
-      logger.error('Failed to generate text', { error });
-      throw error;
-    }
-  }
-
-  public async chat(params: ChatRequest): Promise<string> {
-    try {
-      const result = await this.ollamaService.generateChatCompletion(params.messages, params.model, params.options);
-      return result;
-    } catch (error) {
-      logger.error('Failed to chat', { error });
-      throw error;
-    }
-  }
-
-  public async getEmbedding(params: EmbeddingRequest): Promise<number[]> {
-    try {
-      const result = await this.ollamaService.createEmbeddings(params.text, params.model);
-      return result;
-    } catch (error) {
-      logger.error('Failed to get embedding', { error });
-      throw error;
     }
   }
 } 

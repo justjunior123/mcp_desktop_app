@@ -1,7 +1,6 @@
 import { MCPServer } from './MCPServer';
-import { Tool } from '../types/protocol';
-import { OllamaService } from '../../services/ollama/OllamaService';
 import { OllamaBridge } from '../../services/ollama/OllamaBridge';
+import { OllamaService } from '../../services/ollama/OllamaService';
 import { logger } from '../../services/logging';
 
 export class LocalMCPServer {

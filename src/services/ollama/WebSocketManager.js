@@ -109,26 +109,22 @@ export class WebSocketManager {
         this.logger.debug('Received WebSocket message', { type: message.type });
         try {
             let models;
-            let response;
-            let error;
-
+            let model;
+            
             switch (message.type) {
                 case 'ping':
-                    // Simple ping/pong for testing connection
                     this.send(ws, { type: 'pong', payload: { timestamp: new Date().toISOString() } });
                     break;
                 case 'refreshModels':
-                    // Refresh models and send updated list
                     await this.modelManager.refreshModelStatuses();
                     models = await this.modelManager.listModelsWithDetails();
                     this.send(ws, { type: 'modelList', payload: { models } });
                     break;
                 case 'pullModel':
-                    // Pull a model by name
                     if (typeof message.payload.modelName !== 'string') {
                         throw new Error('Invalid model name');
                     }
-                    const model = await this.modelManager.pullModel(message.payload.modelName);
+                    model = await this.modelManager.pullModel(message.payload.modelName);
                     this.send(ws, {
                         type: 'pullStarted',
                         payload: {
@@ -148,7 +144,7 @@ export class WebSocketManager {
                         payload: { modelId: message.payload.modelId }
                     });
                     break;
-                case 'getModelDetails':
+                case 'getModelDetails': {
                     // Get detailed information for a model
                     if (typeof message.payload.modelId !== 'string') {
                         throw new Error('Invalid model ID');
@@ -159,6 +155,7 @@ export class WebSocketManager {
                         payload: modelDetails
                     });
                     break;
+                }
                 case 'saveModelParameters':
                     // Save model parameters
                     if (typeof message.payload.modelId !== 'string' ||
@@ -196,21 +193,12 @@ export class WebSocketManager {
                     break;
                 default:
                     this.logger.warn('Unknown message type', { type: message.type });
-                    this.send(ws, {
-                        type: 'error',
-                        payload: { message: `Unknown message type: ${message.type}` }
-                    });
+                    this.send(ws, { type: 'error', payload: { message: 'Unknown message type' } });
             }
         }
-        catch (error) {
-            this.logger.error('Error handling message', { type: message.type, error });
-            this.send(ws, {
-                type: 'error',
-                payload: {
-                    message: error instanceof Error ? error.message : 'Unknown error',
-                    originalType: message.type
-                }
-            });
+        catch (err) {
+            this.logger.error('Error handling message', { type: message.type, error: err });
+            this.send(ws, { type: 'error', payload: { message: err.message || 'Internal server error' } });
         }
     }
     /**
