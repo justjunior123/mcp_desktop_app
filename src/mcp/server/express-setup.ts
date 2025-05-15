@@ -1,12 +1,21 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { MCPServerManager } from './MCPServerManager';
+import { logger } from '../../services/logging';
+import { createRequestLogger, createErrorLogger } from '../../services/logging/middleware/expressMiddleware';
 
 type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 type ErrorRequestHandler = (err: Error, req: Request, res: Response, next: NextFunction) => void;
 
 export function setupExpressApp(manager: MCPServerManager): Express {
   const app = express();
+
+  // Set up request logging
+  const expressLogger = logger.withCategory('express');
+  app.use(createRequestLogger(expressLogger, {
+    skip: (req) => req.path === '/api/health', // Don't log health checks
+    logBody: true
+  }));
 
   // Middleware
   app.use(express.json({
@@ -56,6 +65,7 @@ export function setupExpressApp(manager: MCPServerManager): Express {
       const servers = await manager.listServers();
       res.json(servers);
     } catch (error) {
+      expressLogger.error('Failed to list servers', { error });
       res.status(500).json({ error: 'Internal server error' });
     }
   };
@@ -65,6 +75,7 @@ export function setupExpressApp(manager: MCPServerManager): Express {
     try {
       const { name, port, modelId } = req.body;
       if (!name || !port || !modelId) {
+        expressLogger.warn('Missing required fields for server creation', { body: req.body });
         res.status(400).json({ error: 'Missing required fields' });
         return;
       }
@@ -72,6 +83,7 @@ export function setupExpressApp(manager: MCPServerManager): Express {
       // Check if port is available
       const isAvailable = await manager.isPortAvailable(port);
       if (!isAvailable) {
+        expressLogger.warn('Port already in use', { port });
         res.status(409).json({ error: 'Port already in use' });
         return;
       }
@@ -79,16 +91,26 @@ export function setupExpressApp(manager: MCPServerManager): Express {
       // Check if any existing server is using this port
       const existingServers = await manager.listServers();
       if (existingServers.some(s => s.port === port)) {
+        expressLogger.warn('Port already used by existing server', { port });
         res.status(409).json({ error: 'Port already in use' });
         return;
       }
 
+      expressLogger.info('Creating new server', { name, port, modelId });
       const server = await manager.createServer(name, port, modelId);
       res.status(201).json(server);
     } catch (error) {
       if (error instanceof Error && error.message.includes('Port')) {
+        expressLogger.warn('Port conflict when creating server', { 
+          error: error.message, 
+          port: req.body.port 
+        });
         res.status(409).json({ error: 'Port already in use' });
       } else {
+        expressLogger.error('Failed to create server', { 
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
         res.status(500).json({ error: 'Internal server error' });
       }
     }
@@ -205,6 +227,9 @@ export function setupExpressApp(manager: MCPServerManager): Express {
     res.status(500).json({ error: 'Internal server error' });
   };
   app.use(errorHandler);
+
+  // Add error logging middleware before the general error handler
+  app.use(createErrorLogger(logger.withCategory('express-error')));
 
   return app;
 } 

@@ -2,13 +2,16 @@ import { DatabaseService } from '../../services/database/DatabaseService';
 import { LocalMCPServer } from './LocalMCPServer';
 import { MCPServer as MCPServerModel } from '@prisma/client';
 import { createServer } from 'net';
+import { logger } from '../../services/logging';
 
 export class MCPServerManager {
   private servers: Map<string, LocalMCPServer> = new Map();
   private db: DatabaseService;
+  private logger = logger.withCategory('mcp-server-manager');
 
   constructor(db: DatabaseService) {
     this.db = db;
+    this.logger.info('MCPServerManager initialized');
   }
 
   /**
@@ -50,8 +53,11 @@ export class MCPServerManager {
   async createServer(name: string, port: number, modelId: string): Promise<MCPServerModel> {
     // Check if port is available, if not find next available port
     if (!(await this.isPortAvailable(port))) {
+      this.logger.warn(`Port ${port} is already in use`, { port });
       throw new Error(`Port ${port} is already in use`);
     }
+    
+    this.logger.debug(`Creating server ${name} on port ${port}`, { name, port, modelId });
     
     // Create server record in database
     const serverRecord = await this.db.createMCPServer({
@@ -66,6 +72,13 @@ export class MCPServerManager {
     // Create server instance
     const server = new LocalMCPServer(port);
     this.servers.set(serverRecord.id, server);
+    
+    this.logger.info(`Server ${name} (${serverRecord.id}) created on port ${port}`, { 
+      id: serverRecord.id, 
+      name, 
+      port, 
+      modelId 
+    });
 
     return serverRecord;
   }
@@ -74,13 +87,17 @@ export class MCPServerManager {
    * Start an MCP server by its ID
    */
   async startServer(id: string): Promise<void> {
+    this.logger.debug(`Starting server ${id}`, { id });
+    
     let server = this.servers.get(id);
     if (!server) {
+      this.logger.warn(`Server ${id} not found`, { id });
       throw new Error(`Server ${id} not found`);
     }
 
     const dbServer = await this.db.getMCPServer(id);
     if (!dbServer) {
+      this.logger.warn(`Server ${id} not found in database`, { id });
       throw new Error(`Server ${id} not found in database`);
     }
 
@@ -88,16 +105,30 @@ export class MCPServerManager {
       // Check if port is available
       if (!(await this.isPortAvailable(dbServer.port))) {
         // Try to find a new port
+        this.logger.warn(`Port ${dbServer.port} for server ${id} is not available, trying to find a new port`, { 
+          id, 
+          port: dbServer.port 
+        });
+        
         const newPort = await this.findAvailablePort(dbServer.port + 1);
         await this.updateServer(id, { port: newPort });
         const newServer = new LocalMCPServer(newPort);
         this.servers.set(id, newServer);
         server = newServer;
+        
+        this.logger.info(`Reassigned server ${id} to port ${newPort}`, { id, port: newPort });
       }
 
       await server.start();
       await this.db.updateMCPServer(id, { status: 'running' });
+      this.logger.info(`Server ${id} started successfully`, { id });
     } catch (error) {
+      this.logger.error(`Failed to start server ${id}`, { 
+        id, 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
       await this.db.updateMCPServer(id, { status: 'error' });
       throw error;
     }
@@ -107,8 +138,11 @@ export class MCPServerManager {
    * Stop an MCP server by its ID
    */
   async stopServer(id: string): Promise<void> {
+    this.logger.debug(`Stopping server ${id}`, { id });
+    
     const server = this.servers.get(id);
     if (!server) {
+      this.logger.warn(`Server ${id} not found`, { id });
       throw new Error(`Server ${id} not found`);
     }
 
@@ -120,8 +154,14 @@ export class MCPServerManager {
         )
       ]);
       await this.db.updateMCPServer(id, { status: 'stopped' });
+      this.logger.info(`Server ${id} stopped successfully`, { id });
     } catch (error) {
-      console.error(`Error stopping server ${id}:`, error);
+      this.logger.error(`Error stopping server ${id}`, { 
+        id, 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
       await this.db.updateMCPServer(id, { status: 'error' });
       throw error;
     }
