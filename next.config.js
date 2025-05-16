@@ -22,6 +22,41 @@ const nextConfig = {
       if (babelRule) {
         babelRule.exclude = [/node_modules/, /\.cjs$/];
       }
+
+      // Add loaders to remove React DevTools message
+      config.module.rules.push(
+        {
+          test: /react-dom\.development\.js$/,
+          loader: 'string-replace-loader',
+          options: {
+            search: 'Download the React DevTools[^"]*',
+            replace: '',
+            flags: 'g'
+          }
+        },
+        {
+          // More specific rule for the exact file
+          test: /next\/dist\/compiled\/react-dom\/cjs\/react-dom\.development\.js$/,
+          loader: 'string-replace-loader',
+          options: {
+            multiple: [
+              {
+                search: 'Download the React DevTools for a better development experience',
+                replace: ''
+              },
+              {
+                search: 'https://reactjs.org/link/react-devtools',
+                replace: ''
+              },
+              {
+                // Remove the entire console.log statement
+                search: /console\.[a-z]+\(\s*(['"])%cDownload the React DevTools[^;]+;/g,
+                replace: ''
+              }
+            ]
+          }
+        }
+      );
     }
 
     // Handle native modules in Electron

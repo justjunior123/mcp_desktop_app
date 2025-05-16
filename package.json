@@ -62,6 +62,7 @@
     "eslint-config-next": "^14.0.4",
     "kill-port": "^2.0.1",
     "rimraf": "^5.0.5",
+    "string-replace-loader": "^3.1.0",
     "typescript": "^5.3.3",
     "wait-on": "^8.0.3"
   }
