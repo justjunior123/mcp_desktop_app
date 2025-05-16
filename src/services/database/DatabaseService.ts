@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma, User, Settings, MCPServer, Model, ChatSession, Message } from '@prisma/client';
+import { PrismaClient, Prisma, User, Settings, MCPServer, Model, ChatSession, Message, OllamaModelDetails } from '@prisma/client';
 import { logger } from '../logging';
 
 export class DatabaseService {
@@ -102,6 +102,26 @@ export class DatabaseService {
 
   async listModels(): Promise<Model[]> {
     return this.prisma.model.findMany();
+  }
+
+  async findModelByName(name: string): Promise<Model | null> {
+    return this.prisma.model.findFirst({ where: { name } });
+  }
+
+  async createOllamaModelDetails(modelId: string, data: Omit<Prisma.OllamaModelDetailsUncheckedCreateInput, 'modelId'>): Promise<OllamaModelDetails> {
+    return this.prisma.ollamaModelDetails.create({
+      data: {
+        ...data,
+        modelId
+      }
+    });
+  }
+
+  async updateOllamaModelDetails(modelId: string, data: Prisma.OllamaModelDetailsUncheckedUpdateInput): Promise<OllamaModelDetails> {
+    return this.prisma.ollamaModelDetails.update({
+      where: { modelId },
+      data
+    });
   }
 
   // Chat Session operations

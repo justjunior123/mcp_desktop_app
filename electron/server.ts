@@ -1,8 +1,7 @@
 import express, { ErrorRequestHandler } from 'express';
 import { createServer } from 'http';
-import { DatabaseService } from '@/services/database/DatabaseService.js';
-import { setupOllamaServices } from '@/services/ollama/setup.js';
-import { logger } from '../src/services/logging/index.js';
+import { DatabaseService } from '../src/services/database/DatabaseService';
+import { logger } from '../src/services/logging';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import bodyParser from 'body-parser';
@@ -54,32 +53,42 @@ const errorHandler: ErrorRequestHandler = (err, req, res) => {
 };
 
 export async function setupServer() {
+  logger.info('Starting server setup...');
+  
   const app = express();
   const server = createServer(app);
   
+  logger.info('Applying middleware...');
+  
   // Apply middleware
-  app.use(cors());
+  app.use(cors({
+    origin: process.env.NODE_ENV === 'development' ? 'http://localhost:3002' : false,
+    credentials: true
+  }));
   app.use(bodyParser.json());
   app.use(limiter);
   
+  logger.info('Initializing database service...');
+  
   // Initialize services
   const db = new DatabaseService();
-  const services = await setupOllamaServices(app, server, db);
+  
+  logger.info('Setting up routes...');
   
   // Health check endpoint
   app.get('/api/health', async (req, res) => {
     try {
+      logger.info('Health check requested');
       const dbStatus = await db.isHealthy();
-      const ollamaStatus = await services.ollamaService.isAvailable();
       
       res.json({
         status: 'ok',
         services: {
-          database: dbStatus ? 'healthy' : 'unhealthy',
-          ollama: ollamaStatus ? 'available' : 'unavailable'
+          database: dbStatus ? 'healthy' : 'unhealthy'
         }
       });
     } catch (error) {
+      logger.error('Health check failed:', { error });
       res.status(500).json({
         status: 'error',
         message: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -91,16 +100,18 @@ export async function setupServer() {
   app.use(errorHandler);
   
   // Start server
-  const port = process.env.PORT ? parseInt(process.env.PORT) : 3100;
+  const port = process.env.API_PORT ? parseInt(process.env.API_PORT) : 3100;
+  
+  logger.info(`Attempting to start server on port ${port}...`);
   
   await new Promise<void>((resolve, reject) => {
     try {
-      server.listen(port, () => {
+      const serverInstance = server.listen(port, () => {
         logger.info(`Server listening on port ${port}`);
         resolve();
       });
       
-      server.on('error', (error: NodeJS.ErrnoException) => {
+      serverInstance.on('error', (error: NodeJS.ErrnoException) => {
         const errorDetails = {
           code: error.code,
           syscall: error.syscall
@@ -123,15 +134,16 @@ export async function setupServer() {
     }
   });
 
-  return { server, services };
+  logger.info('Server setup completed successfully');
+  return { server, db };
 }
 
 // Handle cleanup
-export function cleanup(services: ReturnType<typeof setupOllamaServices>) {
+export function cleanup() {
+  logger.info('Starting server cleanup...');
   try {
-    services.cleanup();
     logger.info('Server cleanup completed successfully');
   } catch (error) {
-    logger.error('Error during server cleanup:', { error });
+    logger.error('Error during cleanup:', { error });
   }
 } 

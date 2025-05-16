@@ -1,7 +1,6 @@
 import { LogTransport, LogEntry } from '../types';
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
 
 /**
  * Configuration for file transport
@@ -25,8 +24,14 @@ export class FileTransport implements LogTransport {
   private readonly MAX_FILES_DEFAULT = 5;
 
   constructor(config: FileTransportConfig) {
+    // In development, use a local logs directory
+    // In production, use a user-specific directory
+    const defaultDir = process.env.NODE_ENV === 'development'
+      ? path.join(process.cwd(), 'logs')
+      : path.join(process.env.HOME || process.cwd(), '.mcp-desktop-app', 'logs');
+
     this.config = {
-      directory: app ? path.join(app.getPath('userData'), 'logs') : path.join(process.cwd(), 'logs'),
+      directory: config.directory || defaultDir,
       maxSize: this.MAX_SIZE_DEFAULT,
       maxFiles: this.MAX_FILES_DEFAULT,
       format: 'json',

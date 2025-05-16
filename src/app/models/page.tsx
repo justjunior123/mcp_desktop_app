@@ -9,6 +9,7 @@ import { Model } from '@prisma/client';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
 import { ModelActions } from '@/components/models/ModelActions';
 import { ServerStatusCard } from '@/components/ServerStatusCard';
+import { getApiUrl, getWsUrl } from '@/config/api';
 
 type ModelWithDetails = Model & { ollamaDetails?: OllamaModelDetails | null };
 type ViewMode = 'list' | 'details' | 'config';
@@ -20,7 +21,7 @@ const ModelsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // WebSocket connection for real-time updates
-  const { sendMessage } = useWebSocket('ws://localhost:3100/ws', {
+  const { sendMessage } = useWebSocket(getWsUrl('ws'), {
     onMessage: (message) => {
       if (message.type === 'initialStatus') {
         // Initial status with model list
@@ -97,7 +98,7 @@ const ModelsPage: React.FC = () => {
   // Fetch models from the API
   const fetchModels = async () => {
     try {
-      const response = await fetch('/api/models');
+      const response = await fetch(getApiUrl('models'));
       if (!response.ok) {
         throw new Error(`Error fetching models: ${response.statusText}`);
       }
@@ -113,7 +114,7 @@ const ModelsPage: React.FC = () => {
   // Pull a model from Ollama
   const handlePullModel = async (modelName: string) => {
     try {
-      const response = await fetch('/api/models/pull', {
+      const response = await fetch(`${getApiUrl('models')}/pull`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,7 +139,7 @@ const ModelsPage: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`/api/models/${modelId}`, {
+      const response = await fetch(`${getApiUrl('models')}/${modelId}`, {
         method: 'DELETE',
       });
 
@@ -161,7 +162,7 @@ const ModelsPage: React.FC = () => {
   // View model details
   const handleViewDetails = async (modelId: string) => {
     try {
-      const response = await fetch(`/api/models/${modelId}`);
+      const response = await fetch(`${getApiUrl('models')}/${modelId}`);
       if (!response.ok) {
         throw new Error(`Error fetching model details: ${response.statusText}`);
       }
@@ -186,7 +187,7 @@ const ModelsPage: React.FC = () => {
   // Save model parameters
   const handleSaveParameters = async (modelId: string, parameters: string) => {
     try {
-      const response = await fetch(`/api/models/${modelId}/parameters`, {
+      const response = await fetch(`${getApiUrl('models')}/${modelId}/parameters`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -198,46 +199,32 @@ const ModelsPage: React.FC = () => {
         throw new Error(`Error saving parameters: ${response.statusText}`);
       }
 
-      // Refresh model details
-      await handleViewDetails(modelId);
+      // The WebSocket will send a parametersSaved message
     } catch (error) {
       console.error(error instanceof Error ? error.message : 'Unknown error saving parameters');
-      throw error;
     }
   };
 
-  // Initial data load
-  useEffect(() => {
-    fetchModels();
-  }, []);
-
-  // Render content based on the current view mode
+  // Render the appropriate content based on view mode
   const renderContent = () => {
-    if (loading) return <div className="text-center py-10">Loading models...</div>;
+    if (loading) {
+      return <div>Loading...</div>;
+    }
 
     switch (viewMode) {
-      case 'list':
-        return (
-          <ModelList
-            models={models}
-            isLoading={loading}
-            onPull={handlePullModel}
-            onDelete={handleDeleteModel}
-            onConfigure={handleConfigureModel}
-            onViewDetails={handleViewDetails}
-          />
-        );
       case 'details':
         return selectedModel ? (
           <ModelDetails
             model={selectedModel}
-            onBack={() => setViewMode('list')}
+            onBack={() => {
+              setSelectedModel(null);
+              setViewMode('list');
+            }}
             onConfigure={handleConfigureModel}
             onDelete={handleDeleteModel}
           />
-        ) : (
-          <div className="text-center py-10">No model selected</div>
-        );
+        ) : null;
+
       case 'config':
         return selectedModel ? (
           <ModelConfigForm
@@ -245,38 +232,26 @@ const ModelsPage: React.FC = () => {
             onSave={handleSaveParameters}
             onCancel={() => setViewMode('details')}
           />
-        ) : (
-          <div className="text-center py-10">No model selected</div>
-        );
+        ) : null;
+
+      case 'list':
       default:
-        return <div className="text-center py-10">Unknown view mode</div>;
+        return (
+          <>
+            <ModelList
+              models={models}
+              onViewDetails={handleViewDetails}
+              onConfigure={handleConfigureModel}
+              onDelete={handleDeleteModel}
+            />
+            <ModelActions onPullModel={handlePullModel} />
+            <ServerStatusCard />
+          </>
+        );
     }
   };
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Model Management</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="md:col-span-3">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">Available Models</h2>
-              <ModelActions />
-            </div>
-            
-            <Suspense fallback={<div>Loading models...</div>}>
-              {renderContent()}
-            </Suspense>
-          </div>
-        </div>
-        
-        <div className="md:col-span-1">
-          <ServerStatusCard />
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="container mx-auto px-4 py-8">{renderContent()}</div>;
 };
 
 export default ModelsPage; 

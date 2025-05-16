@@ -1,34 +1,66 @@
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.js
 
-# testing
+# Testing
 /coverage
+/test-results
+/playwright-report
 
-# next.js
+# Build outputs
 /.next/
 /out/
+/dist/
+/build/
+*.js.map
 
-# production
-/build
-/dist
+# Electron specific
+/dist-electron/
+/release/
+*.asar
 
-# misc
-.DS_Store
-*.pem
+# Database
+/prisma/*.db
+/prisma/*.db-journal
+*.sqlite
+*.sqlite3
 
-# debug
+# Logs
+/logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
+# Environment files
+.env
+.env.*
+!.env.example
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-# Folders
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
 /PROJECT_DOCS
