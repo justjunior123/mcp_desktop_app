@@ -1,7 +1,7 @@
 const { exec } = require('child_process');
 const os = require('os');
 
-const ports = [3002, 3100]; // Next.js and API ports
+const ports = [3002, 3100, 5555]; // Next.js, API, and Prisma Studio ports
 const platform = os.platform();
 
 function killProcessOnPort(port) {
@@ -33,12 +33,12 @@ function killProcessOnPort(port) {
   });
 }
 
-function killElectron() {
+function killProcessByName(processName) {
   return new Promise((resolve) => {
     if (platform === 'win32') {
-      exec('taskkill /F /IM electron.exe', () => resolve());
+      exec(`taskkill /F /IM ${processName}`, () => resolve());
     } else {
-      exec('pkill -f electron', () => resolve());
+      exec(`pkill -f ${processName}`, () => resolve());
     }
   });
 }
@@ -49,8 +49,12 @@ async function cleanup() {
   // Kill processes on specific ports
   await Promise.all(ports.map(port => killProcessOnPort(port)));
   
-  // Kill any running electron processes
-  await killElectron();
+  // Kill specific processes
+  await Promise.all([
+    killProcessByName('electron'),
+    killProcessByName('prisma'),
+    killProcessByName('node')
+  ]);
   
   console.log('✨ Cleanup complete!');
 }

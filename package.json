@@ -6,7 +6,7 @@
   "description": "MCP Desktop Application",
   "main": "dist/electron/electron/main.js",
   "scripts": {
-    "dev": "npm run clean && npm run kill-ports && concurrently \"npm run dev:next\" \"npm run dev:electron\"",
+    "dev": "npm run clean && npm run kill-ports && npm run db:setup && concurrently \"npm run dev:next\" \"npm run dev:electron\" \"npm run prisma:studio\"",
     "dev:next": "next dev -p 3002",
     "dev:electron": "tsc -p electron/tsconfig.json && cross-env NODE_ENV=development ELECTRON_HMR=true electron .",
     "build": "next build && tsc -p electron/tsconfig.json",
@@ -15,6 +15,7 @@
     "kill-ports": "node scripts/cleanup.js",
     "clean": "rimraf .next out dist",
     "build:all": "npm run clean && next build && tsc -p electron/tsconfig.json && electron-builder",
+    "db:setup": "prisma generate && prisma migrate deploy",
     "prisma:studio": "dotenv -e .env prisma studio",
     "prisma:migrate": "dotenv -e .env prisma migrate dev",
     "prisma:generate": "dotenv -e .env prisma generate"

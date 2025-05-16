@@ -1,10 +1,12 @@
 import { app, BrowserWindow, session, ipcMain } from 'electron';
 import { join } from 'path';
-import { setupServer, cleanup } from './server';
+import { setupServer, cleanup as cleanupServer } from './server';
 import { autoUpdater } from 'electron-updater';
+import { DatabaseService } from './services/database/DatabaseService';
 
 let mainWindow: BrowserWindow | null = null;
 let serverInstance: Awaited<ReturnType<typeof setupServer>> | null = null;
+const dbService = DatabaseService.getInstance();
 
 const isDev = process.env.NODE_ENV === 'development';
 const NEXT_PORT = process.env.PORT || 3002;
@@ -39,10 +41,13 @@ if (isDev) {
 async function startServer() {
   console.log('🚀 Starting Express server...');
   try {
+    // Initialize database first
+    await dbService.init();
+    
     serverInstance = await setupServer();
     console.log('✅ Express server started successfully');
   } catch (err) {
-    console.error('❌ Failed to start Express server:', err);
+    console.error('❌ Failed to start server:', err);
     app.quit();
   }
 }
@@ -153,6 +158,12 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
-  cleanup();
+app.on('before-quit', async () => {
+  // Cleanup both server and database
+  await Promise.all([
+    cleanupServer(),
+    dbService.cleanup()
+  ]).catch(err => {
+    console.error('❌ Error during cleanup:', err);
+  });
 }); 
