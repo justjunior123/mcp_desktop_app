@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, session, ipcMain } from 'electron';
 import { join } from 'path';
 import { setupServer, cleanup } from './server';
 import { autoUpdater } from 'electron-updater';
@@ -18,7 +18,7 @@ if (isDev) {
     
     require('electron-reloader')(module, {
       debug: true,
-      watchRenderer: false,
+      watchRenderer: true,
       ignore: [
         'node_modules',
         '.next',
@@ -63,7 +63,7 @@ async function createWindow() {
   }
 
   // Prevent multiple windows from being created
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
     return;
@@ -76,7 +76,8 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-      allowRunningInsecureContent: false
+      allowRunningInsecureContent: false,
+      preload: join(__dirname, 'preload.js')
     }
   });
 
@@ -90,25 +91,17 @@ async function createWindow() {
       console.log('✅ Development server loaded successfully');
       mainWindow.webContents.openDevTools();
 
-      // Set up HMR detection
-      let lastCompilationTime = Date.now();
-      const DEBOUNCE_TIME = 1000; // ms
-
-      // Watch for console messages that indicate Next.js compilation
+      // Watch for Next.js HMR events
       mainWindow.webContents.on('console-message', (event, level, message) => {
-        if (message.includes('Compiled')) {
-          const now = Date.now();
-          if (now - lastCompilationTime > DEBOUNCE_TIME) {
-            console.log('📦 Next.js compilation detected:', message);
-            lastCompilationTime = now;
-            
-            // Reload the window after compilation
-            setTimeout(() => {
-              if (mainWindow) {
-                console.log('🔄 Reloading window after compilation...');
-                mainWindow.reload();
-              }
-            }, 100);
+        // Listen for Next.js compilation messages
+        if (message.includes('Compiled successfully') || 
+            message.includes('Fast Refresh') ||
+            message.includes('webpack') ||
+            message.includes('HMR')) {
+          console.log('📦 Next.js compilation detected:', message);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            console.log('🔄 Reloading window...');
+            mainWindow.webContents.reload();
           }
         }
       });
@@ -116,21 +109,12 @@ async function createWindow() {
       // Watch for page errors
       mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
         console.error('❌ Failed to load URL:', errorDescription);
-        setTimeout(() => {
-          if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          setTimeout(() => {
             console.log('🔄 Retrying to load development server...');
-            mainWindow.loadURL(devServerUrl);
-          }
-        }, 1000);
-      });
-
-      // Log successful loads
-      mainWindow.webContents.on('did-finish-load', () => {
-        console.log('✅ Page loaded successfully');
-      });
-
-      mainWindow.webContents.on('dom-ready', () => {
-        console.log('✅ DOM ready');
+            mainWindow?.loadURL(devServerUrl);
+          }, 1000);
+        }
       });
 
     } catch (error) {
@@ -170,7 +154,5 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (serverInstance) {
-    cleanup();
-  }
+  cleanup();
 }); 

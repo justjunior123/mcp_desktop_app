@@ -6,7 +6,7 @@ const nextConfig = {
     domains: ['i.pravatar.cc'],
     unoptimized: process.env.NODE_ENV === 'development'
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
     // Handle ESM modules properly
     config.resolve.extensionAlias = {
       '.js': ['.js', '.ts', '.tsx'],
@@ -27,6 +27,15 @@ const nextConfig = {
     // Handle native modules in Electron
     if (!isServer) {
       config.target = 'electron-renderer';
+      
+      // Enable HMR in development
+      if (dev) {
+        config.optimization = {
+          ...config.optimization,
+          moduleIds: 'named',
+          chunkIds: 'named'
+        };
+      }
     }
     
     return config;
