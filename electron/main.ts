@@ -3,6 +3,7 @@ import { join } from 'path';
 import { setupServer, cleanup as cleanupServer } from './server';
 import { autoUpdater } from 'electron-updater';
 import { DatabaseService } from './services/database/DatabaseService';
+import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 
 let mainWindow: BrowserWindow | null = null;
 let serverInstance: Awaited<ReturnType<typeof setupServer>> | null = null;
@@ -35,6 +36,18 @@ if (isDev) {
     });
   } catch (err) {
     console.error('❌ Error setting up hot reload:', err);
+  }
+}
+
+async function installDevTools() {
+  if (isDev) {
+    try {
+      console.log('🛠 Installing React DevTools...');
+      const name = await installExtension(REACT_DEVELOPER_TOOLS);
+      console.log(`✅ Added Extension: ${name}`);
+    } catch (err) {
+      console.error('❌ Error installing React DevTools:', err);
+    }
   }
 }
 
@@ -142,8 +155,21 @@ async function createWindow() {
 
 // App lifecycle events
 app.whenReady().then(async () => {
-  await startServer();
-  await createWindow();
+  await installDevTools();
+  console.log('🚀 Starting services...');
+  console.log('📊 Initializing database connection...');
+  
+  try {
+    await dbService.init();
+    console.log('✅ Database initialized successfully');
+    
+    serverInstance = await setupServer();
+    console.log('✅ Express server started successfully');
+    
+    createWindow();
+  } catch (error) {
+    console.error('❌ Error during startup:', error);
+  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
