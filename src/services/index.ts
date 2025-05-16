@@ -2,5 +2,5 @@
  * MCP application services.
  */
 
-// Export logging services
-export * from './logging'; 
+// Export services here when we add them
+export {}; 

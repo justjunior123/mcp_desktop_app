@@ -1,0 +1,28 @@
+{
+  "appId": "com.mcp.desktop",
+  "productName": "MCP Desktop",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "node_modules/**/*",
+    ".next/**/*",
+    "package.json"
+  ],
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": ["dmg", "zip"]
+  },
+  "win": {
+    "target": ["nsis", "portable"]
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "Development"
+  },
+  "publish": {
+    "provider": "github",
+    "releaseType": "release"
+  }
+} 

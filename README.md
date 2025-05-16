@@ -5,26 +5,37 @@ Desktop application for managing local LLMs and MCP servers, built with Next.js 
 ## Project Structure
 
 ```
-├── app/                  # Next.js app directory (frontend)
-├── electron/            # Electron main process code
+/
+├── app/                    # Next.js app directory (frontend)
+│   ├── layout.tsx         # Root layout
+│   └── page.tsx           # Home page
+├── electron/              # Electron main process code
+│   ├── main.ts           # Main entry point
+│   └── tsconfig.json     # Electron-specific TypeScript config
 ├── src/
-│   ├── components/     # React components
-│   │   ├── ServerStatusCard/
-│   │   ├── models/
-│   │   ├── ui/
-│   │   └── layout/
-│   ├── services/      # Core services
-│   │   ├── database/
-│   │   ├── logging/
-│   │   └── ollama/
-│   └── server/        # Server-side code
-│       ├── api/
-│       ├── process/
-│       ├── services/
-│       └── types/
-├── prisma/             # Database schema and migrations
-└── PROJECT_DOCS/       # Project documentation
+│   ├── components/       # React components
+│   │   ├── ui/          # Reusable UI components
+│   │   └── layout/      # Layout components
+│   ├── lib/             # Core libraries
+│   │   └── config.ts    # App configuration
+│   ├── services/        # Core services
+│   │   ├── database/    # Database service
+│   │   └── logging/     # Logging service
+│   ├── types/           # TypeScript type definitions
+│   └── utils/           # Utility functions
+├── prisma/              # Database schema and migrations
+└── PROJECT_DOCS/        # Project documentation
 ```
+
+## Tech Stack
+
+- **Frontend**: Next.js 14
+- **Desktop**: Electron
+- **Language**: TypeScript
+- **Database**: Prisma
+- **Styling**: Tailwind CSS
+- **State Management**: React Context + Hooks
+- **Development Tools**: ESLint, Prettier, Husky
 
 ## Development
 
@@ -33,30 +44,75 @@ Desktop application for managing local LLMs and MCP servers, built with Next.js 
 npm install
 ```
 
-2. Initialize the database:
+2. Set up environment variables:
 ```bash
-npm run prisma:migrate
-npm run prisma:generate
+cp .env.example .env
 ```
 
-3. Start the development environment:
+3. Initialize the database:
 ```bash
-npm run dev-all
+npm run prisma:generate
+npm run prisma:migrate
+```
+
+4. Start the development environment:
+```bash
+npm run dev
 ```
 
 This will start:
-- Next.js frontend (port 3002)
-- Express API server (port 3100)
-- Electron app
+- Next.js frontend on port 3002
+- Electron app in development mode
 - TypeScript compilation in watch mode
 
-## Available Scripts
+## Building
 
-- `npm run dev-all` - Start all services in development mode
-- `npm run dev` - Start Next.js development server only
-- `npm run electron-dev` - Start Electron in development mode
-- `npm run build:all` - Build all components for production
-- `npm run clean` - Clean build artifacts
-- `npm run prisma:studio` - Open Prisma database UI
-- `npm run prisma:migrate` - Run database migrations
-- `npm run prisma:generate` - Generate Prisma client
+1. Build for production:
+```bash
+npm run build
+```
+
+2. Package the app:
+```bash
+npm run package      # For current platform
+npm run package:all  # For all platforms
+```
+
+## Best Practices
+
+1. **TypeScript**
+   - Use strict mode
+   - Define types in `src/types`
+   - Use path aliases (@/components, etc.)
+
+2. **Components**
+   - Use functional components
+   - Implement proper prop types
+   - Keep components small and focused
+
+3. **State Management**
+   - Use React Context for global state
+   - Implement proper state isolation
+   - Use hooks for shared logic
+
+4. **Error Handling**
+   - Implement proper error boundaries
+   - Use typed error handling
+   - Log errors appropriately
+
+5. **Testing**
+   - Write unit tests for utilities
+   - Write integration tests for features
+   - Test electron functionality
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+[MIT License](LICENSE)

@@ -4,34 +4,24 @@
     "target": "ES2020",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "outDir": "../dist/electron",
-    "rootDir": "..",
+    "outDir": "../dist/electron/electron",
+    "rootDir": ".",
     "noEmit": false,
     "noEmitOnError": true,
     "skipLibCheck": true,
-    "baseUrl": "..",
-    "paths": {
-      "@/*": ["src/*"]
-    },
+    "baseUrl": ".",
     "allowJs": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "strict": true,
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "esModuleInterop": true
   },
   "include": [
-    "**/*.ts",
-    "../src/services/**/*.ts"
+    "**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "**/*.js"
-  ],
-  "ts-node": {
-    "esm": true,
-    "experimentalSpecifiers": true
-  }
+  ]
 } 

@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  
+  output: 'standalone',
+  images: {
+    domains: ['i.pravatar.cc'],
+    unoptimized: process.env.NODE_ENV === 'development'
+  },
   webpack: (config, { isServer }) => {
     // Handle ESM modules properly
     config.resolve.extensionAlias = {
@@ -27,14 +31,17 @@ const nextConfig = {
     
     return config;
   },
-
-  // Disable image optimization since we're using Electron
-  images: {
-    unoptimized: true
+  // Add compression
+  compress: true,
+  // Add powered by header
+  poweredByHeader: false,
+  // Enable strict mode for better error catching
+  typescript: {
+    ignoreBuildErrors: false,
   },
-
-  // Ensure proper output for Electron
-  output: 'standalone'
+  eslint: {
+    ignoreDuringBuilds: false,
+  }
 };
 
 module.exports = nextConfig; 
