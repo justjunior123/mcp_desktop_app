@@ -1,35 +1,39 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ModelList } from '@/components/models/ModelList';
 import { ModelDetails } from '../../components/models/ModelDetails';
 import { ModelConfigForm } from '../../components/models/ModelConfigForm';
 import { useWebSocket } from '../../lib/hooks/useWebSocket';
-import { Model } from '@prisma/client';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
 import { ModelActions } from '@/components/models/ModelActions';
 import { ServerStatusCard } from '@/components/ServerStatusCard';
 import { getApiUrl, getWsUrl } from '@/config/api';
+import { WebSocketMessageUnion } from '../../types/websocket';
 
-type ModelWithDetails = Model & { ollamaDetails?: OllamaModelDetails | null };
 type ViewMode = 'list' | 'details' | 'config';
 
 const ModelsPage: React.FC = () => {
-  const [models, setModels] = useState<ModelWithDetails[]>([]);
+  const [models, setModels] = useState<OllamaModelDetails[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedModel, setSelectedModel] = useState<ModelWithDetails | null>(null);
+  const [selectedModel, setSelectedModel] = useState<OllamaModelDetails | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // WebSocket connection for real-time updates
-  const { sendMessage } = useWebSocket(getWsUrl('ws'), {
-    onMessage: (message) => {
+  const { sendMessage, isConnected } = useWebSocket(getWsUrl('ws'), {
+    onMessage: (message: WebSocketMessageUnion) => {
       if (message.type === 'initialStatus') {
         // Initial status with model list
         setModels(message.payload.models);
         setLoading(false);
       } else if (message.type === 'modelStatusUpdate') {
         // Update model status in the list
-        updateModelStatus(message.payload);
+        const { modelId, status, progress } = message.payload;
+        updateModelStatus({
+          modelId,
+          status: status as OllamaModelDetails['status'],
+          progress
+        });
       } else if (message.type === 'modelDetails') {
         // Detailed model information
         setSelectedModel(message.payload);
@@ -54,21 +58,18 @@ const ModelsPage: React.FC = () => {
   });
 
   // Update model status in the list
-  const updateModelStatus = (update: { modelId: string; status: string; downloadProgress?: number; error?: string }) => {
+  const updateModelStatus = (update: { 
+    modelId: string; 
+    status: OllamaModelDetails['status']; 
+    progress?: number 
+  }) => {
     setModels((prevModels) => {
       return prevModels.map((model) => {
         if (model.id === update.modelId) {
           return {
             ...model,
             status: update.status,
-            ollamaDetails: model.ollamaDetails
-              ? {
-                  ...model.ollamaDetails,
-                  downloadProgress: update.downloadProgress || model.ollamaDetails.downloadProgress,
-                  downloadStatus: update.status,
-                  errorMessage: update.error || model.ollamaDetails.errorMessage,
-                }
-              : null,
+            downloadProgress: update.progress
           };
         }
         return model;
@@ -77,25 +78,18 @@ const ModelsPage: React.FC = () => {
 
     // Also update the selected model if it's affected
     if (selectedModel && selectedModel.id === update.modelId) {
-      setSelectedModel((prev) => {
+      setSelectedModel((prev: OllamaModelDetails | null) => {
         if (!prev) return null;
         return {
           ...prev,
           status: update.status,
-          ollamaDetails: prev.ollamaDetails
-            ? {
-                ...prev.ollamaDetails,
-                downloadProgress: update.downloadProgress || prev.ollamaDetails.downloadProgress,
-                downloadStatus: update.status,
-                errorMessage: update.error || prev.ollamaDetails.errorMessage,
-              }
-            : null,
+          downloadProgress: update.progress
         };
       });
     }
   };
 
-  // Fetch models from the API
+  // Fetch models from the server
   const fetchModels = async () => {
     try {
       const response = await fetch(getApiUrl('models'));
@@ -103,11 +97,9 @@ const ModelsPage: React.FC = () => {
         throw new Error(`Error fetching models: ${response.statusText}`);
       }
       const data = await response.json();
-      setModels(data.models || []);
-      setLoading(false);
+      setModels(data.models);
     } catch (error) {
       console.error(error instanceof Error ? error.message : 'Unknown error fetching models');
-      setLoading(false);
     }
   };
 
@@ -205,53 +197,67 @@ const ModelsPage: React.FC = () => {
     }
   };
 
-  // Render the appropriate content based on view mode
+  // Render the appropriate view
   const renderContent = () => {
     if (loading) {
-      return <div>Loading...</div>;
+      return (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        </div>
+      );
     }
 
-    switch (viewMode) {
-      case 'details':
-        return selectedModel ? (
-          <ModelDetails
+    if (viewMode === 'details' && selectedModel) {
+      return (
+        <ModelDetails
+          model={selectedModel}
+          onBack={() => setViewMode('list')}
+          onConfigure={handleConfigureModel}
+        />
+      );
+    }
+
+    if (viewMode === 'config' && selectedModel) {
+      return (
+        <ModelConfigForm
+          model={selectedModel}
+          onSave={handleSaveParameters}
+          onBack={() => setViewMode('details')}
+        />
+      );
+    }
+
+    return (
+      <>
+        <ModelList
+          models={models}
+          onViewDetails={handleViewDetails}
+          onConfigureModel={handleConfigureModel}
+          onPullModel={handlePullModel}
+          onDeleteModel={handleDeleteModel}
+        />
+        {selectedModel && (
+          <ModelActions
             model={selectedModel}
-            onBack={() => {
-              setSelectedModel(null);
-              setViewMode('list');
-            }}
-            onConfigure={handleConfigureModel}
+            onPull={handlePullModel}
             onDelete={handleDeleteModel}
+            onConfigure={handleConfigureModel}
           />
-        ) : null;
-
-      case 'config':
-        return selectedModel ? (
-          <ModelConfigForm
-            model={selectedModel}
-            onSave={handleSaveParameters}
-            onCancel={() => setViewMode('details')}
-          />
-        ) : null;
-
-      case 'list':
-      default:
-        return (
-          <>
-            <ModelList
-              models={models}
-              onViewDetails={handleViewDetails}
-              onConfigure={handleConfigureModel}
-              onDelete={handleDeleteModel}
-            />
-            <ModelActions onPullModel={handlePullModel} />
-            <ServerStatusCard />
-          </>
-        );
-    }
+        )}
+        <ServerStatusCard
+          isConnected={isConnected}
+          onRefresh={() => sendMessage({ type: 'refreshModels' })}
+        />
+      </>
+    );
   };
 
-  return <div className="container mx-auto px-4 py-8">{renderContent()}</div>;
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8">Model Management</h1>
+      {renderContent()}
+    </div>
+  );
 };
 
 export default ModelsPage; 

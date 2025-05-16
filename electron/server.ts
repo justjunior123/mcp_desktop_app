@@ -1,5 +1,6 @@
 import express from 'express';
 import { Server } from 'http';
+import ollamaRouter from '../src/api/routes/ollama';
 
 let server: Server | null = null;
 const API_PORT = process.env.API_PORT || 3100;
@@ -14,6 +15,9 @@ export async function setupServer() {
   app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
   });
+
+  // Add Ollama routes
+  app.use('/api/ollama', ollamaRouter);
 
   // Start the server
   return new Promise<Server>((resolve, reject) => {

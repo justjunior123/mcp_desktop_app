@@ -33,59 +33,83 @@ model MCPServer {
   host        String   @default("localhost")
   maxRequests Int      @default(10)
   timeout     Int      @default(30000)
-  model       Model    @relation(fields: [modelId], references: [id])
+  model       OllamaModel @relation(fields: [modelId], references: [id])
   modelId     String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-model Model {
-  id                String             @id @default(uuid())
-  name              String
-  status            String             @default("not_installed") // installed, not_installed, downloading, error
-  parameters        String?            // JSON string of model parameters
-  servers           MCPServer[]
-  chatSessions      ChatSession[]
-  ollamaDetails     OllamaModelDetails?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+model OllamaModel {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  size        Int
+  digest      String
+  format      String
+  family      String
+  parameters  Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Model status
+  isDownloaded Boolean  @default(false)
+  downloadProgress Float @default(0)
+  status      String   @default("NOT_DOWNLOADED") // NOT_DOWNLOADED, DOWNLOADING, READY, ERROR
+  error       String?
+
+  // Model configuration
+  configuration OllamaModelConfiguration?
+
+  // Relations
+  chatSessions ChatSession[]
+  servers      MCPServer[]
 }
 
-model OllamaModelDetails {
-  id                String    @id @default(uuid())
-  model             Model     @relation(fields: [modelId], references: [id])
-  modelId           String    @unique
-  size              BigInt?  // Size in bytes
-  format            String?  // e.g., GGUF
-  family            String?  // e.g., Llama, Mistral
-  parameterSize     String?  // e.g., "7B", "13B"
-  quantizationLevel String?  // e.g., "Q4_K_M"
-  downloadProgress  Float     @default(0) // 0-100%
-  downloadStatus    String    @default("idle") // idle, downloading, completed, error
-  errorMessage      String?
-  digest            String?  // Model hash/digest
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+model OllamaModelConfiguration {
+  id          String   @id @default(cuid())
+  modelId     String   @unique
+  model       OllamaModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  // Default generation parameters
+  temperature Float?   @default(0.7)
+  topP        Float?   @default(0.9)
+  topK        Int?     @default(40)
+  repeatPenalty Float? @default(1.1)
+  presencePenalty Float?
+  frequencyPenalty Float?
+  stopSequences String   @default("[]") // JSON array of stop sequences
+  maxTokens   Int?
+  
+  // System configuration
+  systemPrompt String?
+  contextWindow Int?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model ChatSession {
-  id        String    @id @default(uuid())
-  name      String
-  messages  Message[]
-  user      User      @relation(fields: [userId], references: [id])
-  userId    String
-  model     Model     @relation(fields: [modelId], references: [id])
-  modelId   String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  name        String?
+  modelId     String
+  model       OllamaModel @relation(fields: [modelId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  messages    Message[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Message {
-  id            String      @id @default(uuid())
-  content       String
-  role          String      // user, assistant
-  metadata      String?     // JSON string for additional metadata
-  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id])
+  id            String   @id @default(cuid())
   chatSessionId String
-  createdAt     DateTime    @default(now())
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+  role          String   // system, user, assistant
+  content       String
+  createdAt     DateTime @default(now())
+  
+  // Generation metadata
+  totalDuration Int?
+  loadDuration  Int?
+  promptEvalDuration Int?
+  evalDuration  Int?
 } 

@@ -4,20 +4,24 @@
     "target": "ES2020",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "outDir": "../dist/electron/electron",
-    "rootDir": ".",
+    "outDir": "../dist/electron",
+    "rootDir": "..",
     "noEmit": false,
     "noEmitOnError": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
+    "baseUrl": "..",
     "allowJs": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": [
-    "**/*.ts"
+    "**/*.ts",
+    "../src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
