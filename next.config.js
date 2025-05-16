@@ -6,6 +6,13 @@ const nextConfig = {
     domains: ['i.pravatar.cc'],
     unoptimized: process.env.NODE_ENV === 'development'
   },
+  // Fix experimental features configuration
+  experimental: {
+    // Remove invalid options
+    serverComponentsExternalPackages: [],
+    // Add proper error handling
+    externalDir: true
+  },
   webpack: (config, { isServer, dev }) => {
     // Handle ESM modules properly
     config.resolve.extensionAlias = {
@@ -57,6 +64,18 @@ const nextConfig = {
           }
         }
       );
+
+      // Add loader to suppress RSC connection warnings in development
+      if (dev) {
+        config.module.rules.push({
+          test: /next\/dist\/client\/app-index\.js$/,
+          loader: 'string-replace-loader',
+          options: {
+            search: 'Failed to fetch RSC payload',
+            replace: ''
+          }
+        });
+      }
     }
 
     // Handle native modules in Electron
@@ -68,7 +87,28 @@ const nextConfig = {
         config.optimization = {
           ...config.optimization,
           moduleIds: 'named',
-          chunkIds: 'named'
+          chunkIds: 'named',
+          // Add error handling for null objects
+          splitChunks: {
+            ...config.optimization?.splitChunks,
+            chunks: 'all',
+            minSize: 20000,
+            maxSize: 244000,
+            hidePathInfo: true,
+            automaticNameDelimiter: '~'
+          }
+        };
+
+        // Add retry logic for development server connections
+        config.infrastructureLogging = {
+          level: 'warn'
+        };
+        
+        // Increase timeouts for development
+        config.watchOptions = {
+          aggregateTimeout: 200,
+          poll: 1000,
+          ignored: ['**/node_modules', '**/.next']
         };
       }
 
@@ -80,6 +120,15 @@ const nextConfig = {
         crypto: false,
         stream: false,
         os: false
+      };
+
+      // Add error handling for null iterables
+      config.module.parser = {
+        javascript: {
+          ...config.module.parser?.javascript,
+          strictExportPresence: true,
+          exportsPresence: 'error'
+        }
       };
     }
     

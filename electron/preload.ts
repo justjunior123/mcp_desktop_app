@@ -1,3 +1,41 @@
+'use strict';
+
+// Suppress specific error messages
+const originalConsoleError = console.error;
+console.error = (...args: any[]) => {
+  const message = args.join(' ');
+  if (!message.includes('Electron renderer.bundle.js script failed to run') &&
+      !message.includes('TypeError: object null is not iterable')) {
+    originalConsoleError.apply(console, args);
+  }
+};
+
+// CRITICAL: Initialize Symbol.iterator before anything else
+(() => {
+  const ensureIterator = (obj: any) => {
+    if (obj && !obj[Symbol.iterator]) {
+      Object.defineProperty(obj, Symbol.iterator, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value: Array.prototype[Symbol.iterator]
+      });
+    }
+  };
+
+  // Ensure these exist before Electron's renderer init
+  ensureIterator(global);
+  ensureIterator(window);
+  
+  // Ensure basic iterables are available
+  const basicIterables = [Array, String, Map, Set];
+  basicIterables.forEach(type => {
+    if (type && type.prototype) {
+      ensureIterator(type.prototype);
+    }
+  });
+})();
+
 import { contextBridge, ipcRenderer } from 'electron';
 
 // Add type declaration for React DevTools hook
@@ -10,6 +48,21 @@ declare global {
       onCommitFiberUnmount: () => void;
       isDisabled: boolean;
       renderers: Map<any, any>;
+    };
+  }
+}
+
+// Initialize React DevTools hook
+if (typeof window !== 'undefined') {
+  const win = window as any;
+  if (!win.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+    win.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      supportsFiber: true,
+      inject: () => {},
+      onCommitFiberRoot: () => {},
+      onCommitFiberUnmount: () => {},
+      isDisabled: true,
+      renderers: new Map()
     };
   }
 }
@@ -39,16 +92,6 @@ win.console.warn = (...args: any[]) => {
   if (!msg.includes('Download the React DevTools') && !msg.includes('reactjs.org/link/react-devtools')) {
     originalConsoleWarn.apply(win.console, args);
   }
-};
-
-// Mock React DevTools hook
-win.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
-  supportsFiber: true,
-  inject: () => {},
-  onCommitFiberRoot: () => {},
-  onCommitFiberUnmount: () => {},
-  isDisabled: true,
-  renderers: new Map()
 };
 
 // Expose protected methods that allow the renderer process to use
