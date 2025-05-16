@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, ipcMain } from 'electron';
+import { app, BrowserWindow, session } from 'electron';
 import { join } from 'path';
 import { setupServer, cleanup as cleanupServer } from './server';
 import { autoUpdater } from 'electron-updater';
@@ -42,26 +42,23 @@ if (isDev) {
 async function installDevTools() {
   if (isDev) {
     try {
+      // Set permissions for DevTools
+      session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+        const parsedUrl = new URL(webContents.getURL());
+        // Allow DevTools and localhost permissions
+        if (parsedUrl.hostname === 'localhost' || webContents.getURL().startsWith('chrome-extension://')) {
+          callback(true);
+        } else {
+          callback(false);
+        }
+      });
+
       console.log('🛠 Installing React DevTools...');
       const name = await installExtension(REACT_DEVELOPER_TOOLS);
       console.log(`✅ Added Extension: ${name}`);
     } catch (err) {
       console.error('❌ Error installing React DevTools:', err);
     }
-  }
-}
-
-async function startServer() {
-  console.log('🚀 Starting Express server...');
-  try {
-    // Initialize database first
-    await dbService.init();
-    
-    serverInstance = await setupServer();
-    console.log('✅ Express server started successfully');
-  } catch (err) {
-    console.error('❌ Failed to start server:', err);
-    app.quit();
   }
 }
 
@@ -74,7 +71,9 @@ async function createWindow() {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
-          'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* data: blob:"]
+          'Content-Security-Policy': [
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* data: blob: chrome-extension:; script-src 'self' 'unsafe-inline' 'unsafe-eval' chrome-extension:; connect-src 'self' http://localhost:* ws://localhost:*;"
+          ]
         }
       });
     });
@@ -93,6 +92,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false, // Disable sandbox for now to fix the DevTools issue
       webSecurity: true,
       allowRunningInsecureContent: false,
       preload: join(__dirname, 'preload.js')
@@ -107,7 +107,13 @@ async function createWindow() {
     try {
       await mainWindow.loadURL(devServerUrl);
       console.log('✅ Development server loaded successfully');
-      mainWindow.webContents.openDevTools();
+      
+      // Open DevTools after a short delay to ensure proper initialization
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.openDevTools();
+        }
+      }, 1000);
 
       // Watch for Next.js HMR events
       mainWindow.webContents.on('console-message', (event, level, message) => {
@@ -153,22 +159,28 @@ async function createWindow() {
   });
 }
 
+// Handle promise rejections
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled promise rejection:', error);
+});
+
 // App lifecycle events
 app.whenReady().then(async () => {
-  await installDevTools();
-  console.log('🚀 Starting services...');
-  console.log('📊 Initializing database connection...');
-  
   try {
+    await installDevTools();
+    console.log('🚀 Starting services...');
+    console.log('📊 Initializing database connection...');
+    
     await dbService.init();
     console.log('✅ Database initialized successfully');
     
     serverInstance = await setupServer();
     console.log('✅ Express server started successfully');
     
-    createWindow();
+    await createWindow();
   } catch (error) {
     console.error('❌ Error during startup:', error);
+    app.quit();
   }
 
   app.on('activate', async () => {

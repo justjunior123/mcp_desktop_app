@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld(
         // Deliberately strip event as it includes `sender` 
         ipcRenderer.on(channel, (event, ...args) => func(...args));
       }
-    }
+    },
+    // Add development-specific APIs
+    isDev: process.env.NODE_ENV === 'development'
   }
 ); 
