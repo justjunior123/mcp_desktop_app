@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { OllamaClient } from './client';
-import { OllamaModelInfo } from './types';
+import { OllamaModelInfo, OllamaModelData } from './types';
 
 export class OllamaModelManager {
   constructor(
@@ -9,6 +9,12 @@ export class OllamaModelManager {
   ) {}
 
   async syncModels(): Promise<void> {
+    // Check if Ollama server is healthy
+    const isHealthy = await this.ollamaClient.healthCheck();
+    if (!isHealthy) {
+      throw new Error('Ollama server is not available');
+    }
+
     const { models } = await this.ollamaClient.listModels();
     
     // Update database with available models
@@ -32,25 +38,25 @@ export class OllamaModelManager {
     });
   }
 
-  private async upsertModel(model: OllamaModelInfo) {
-    return this.prisma.ollamaModel.upsert({
+  private async upsertModel(model: OllamaModelInfo): Promise<void> {
+    const modelData: OllamaModelData = {
+      name: model.name,
+      size: model.size,
+      digest: model.digest,
+      format: model.details?.format || '',
+      family: model.details?.family || '',
+      parameters: model.details || {}
+    };
+
+    await this.prisma.ollamaModel.upsert({
       where: { name: model.name },
       create: {
-        name: model.name,
-        size: model.size,
-        digest: model.digest,
-        format: model.format,
-        family: model.family,
-        parameters: model.parameters || {},
+        ...modelData,
         isDownloaded: true,
         status: 'READY'
       },
       update: {
-        size: model.size,
-        digest: model.digest,
-        format: model.format,
-        family: model.family,
-        parameters: model.parameters || {},
+        ...modelData,
         isDownloaded: true,
         status: 'READY'
       }

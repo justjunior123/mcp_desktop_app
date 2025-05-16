@@ -23,19 +23,35 @@ export class OllamaClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
 
-    if (!response.ok) {
-      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+      if (!response.ok) {
+        throw new OllamaError(`HTTP error ${response.status}`, response.status);
+      }
+
+      return response.json() as Promise<T>;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new OllamaError(`Failed to connect to Ollama server: ${error.message}`);
+      }
+      throw error;
     }
+  }
 
-    return response.json() as Promise<T>;
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.listModels();
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 
   async listModels(): Promise<{ models: OllamaModelInfo[] }> {

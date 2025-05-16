@@ -1,14 +1,33 @@
 export interface OllamaModelInfo {
   name: string;
+  model: string;
+  modified_at: string;
+  size: number;
+  digest: string;
+  details: {
+    parent_model?: string;
+    format: string;
+    family: string;
+    families?: string[];
+    quantization_level?: string;
+    [key: string]: any;
+  };
+}
+
+export interface OllamaModelData {
+  id?: string;
+  name: string;
   size: number;
   digest: string;
   format: string;
   family: string;
-  parameters?: {
-    context_length: number;
-    gpu_layers: number;
-    [key: string]: any;
-  };
+  parameters: Record<string, any>;
+  isDownloaded?: boolean;
+  downloadProgress?: number;
+  status?: string;
+  error?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface OllamaGenerateRequest {

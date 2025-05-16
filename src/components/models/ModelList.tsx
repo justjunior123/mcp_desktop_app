@@ -1,6 +1,14 @@
 import React from 'react';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
 interface ModelListProps {
   models: OllamaModelDetails[];
   onViewDetails: (modelId: string) => void;
@@ -23,12 +31,10 @@ export const ModelList: React.FC<ModelListProps> = ({
           key={model.id}
           className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow"
         >
-          <h3 className="text-lg font-semibold mb-2">{model.name}</h3>
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-            <p>Family: {model.family}</p>
-            <p>Size: {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB</p>
-            <p>Status: {model.status}</p>
-          </div>
+          <h3 className="text-lg font-semibold">{model.name}</h3>
+          <p>Status: {model.status}</p>
+          <p>Family: {model.details?.family || 'Unknown'}</p>
+          <p>Size: {formatBytes(model.size)}</p>
           {model.downloadProgress !== undefined && model.status === 'DOWNLOADING' && (
             <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
               <div

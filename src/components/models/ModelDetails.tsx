@@ -1,6 +1,14 @@
 import React from 'react';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
 interface ModelDetailsProps {
   model: OllamaModelDetails;
   onBack: () => void;
@@ -36,9 +44,9 @@ export const ModelDetails: React.FC<ModelDetailsProps> = ({
         <div>
           <h3 className="text-lg font-semibold mb-4">Model Information</h3>
           <div className="space-y-2">
-            <p><span className="font-medium">Family:</span> {model.family}</p>
-            <p><span className="font-medium">Format:</span> {model.format}</p>
-            <p><span className="font-medium">Size:</span> {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+            <p><span className="font-medium">Family:</span> {model.details?.family || 'Unknown'}</p>
+            <p><span className="font-medium">Format:</span> {model.details?.format || 'Unknown'}</p>
+            <p><span className="font-medium">Size:</span> {formatBytes(model.size)}</p>
             <p><span className="font-medium">Status:</span> {model.status}</p>
             <p><span className="font-medium">Digest:</span> {model.digest}</p>
           </div>

@@ -1,5 +1,6 @@
 import express from 'express';
 import { Server } from 'http';
+import cors from 'cors';
 import ollamaRouter from '../src/api/routes/ollama';
 
 let server: Server | null = null;
@@ -10,6 +11,10 @@ export async function setupServer() {
 
   // Basic middleware
   app.use(express.json());
+  app.use(cors({
+    origin: ['http://localhost:3002', 'app://rse'],
+    credentials: true
+  }));
 
   // Basic health check endpoint
   app.get('/health', (req, res) => {

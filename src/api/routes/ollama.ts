@@ -1,7 +1,7 @@
 import { Router, Request, Response, RequestHandler } from 'express';
 import { OllamaClient } from '../../services/ollama/client';
 import { OllamaModelManager } from '../../services/ollama/model-manager';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../services/database/client';
 import { OllamaChatMessage } from '../../services/ollama/types';
 
 interface ChatRequest {
@@ -32,7 +32,6 @@ function cleanConfig(config: Record<string, any> | null | undefined): Record<str
 }
 
 const router = Router();
-const prisma = new PrismaClient();
 const ollamaClient = new OllamaClient();
 const modelManager = new OllamaModelManager(prisma, ollamaClient);
 
@@ -208,11 +207,11 @@ const chatStream: RequestHandler<{}, any, ChatRequest> = async (req, res): Promi
 };
 
 // Register routes
-router.get('/models', listModels);
-router.get('/models/:name', getModel);
-router.post('/models/:name/pull', pullModel);
-router.put('/models/:name/config', updateModelConfig);
-router.delete('/models/:name', deleteModel);
+router.get('/', listModels);
+router.get('/:name', getModel);
+router.post('/:name/pull', pullModel);
+router.put('/:name/config', updateModelConfig);
+router.delete('/:name', deleteModel);
 router.post('/chat', chat);
 router.post('/chat/stream', chatStream);
 
