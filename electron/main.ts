@@ -1,16 +1,21 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, session, ipcMain } from 'electron';
 import { join } from 'path';
 import { setupServer, cleanup } from './server';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 
+let mainWindow: BrowserWindow | null = null;
+let serverInstance: Awaited<ReturnType<typeof setupServer>> | null = null;
+
+const isDev = process.env.NODE_ENV === 'development';
+const NEXT_PORT = process.env.PORT || 3002;
+
 // Enable hot reload in development
-try {
-  if (process.env.NODE_ENV === 'development') {
+if (isDev) {
+  try {
     console.log('Enabling hot reload...');
     const path = require('path');
     const projectRoot = path.join(__dirname, '../..');
     
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     require('electron-reloader')(module, {
       debug: true,
       watchRenderer: false, // We're using Next.js's own HMR
@@ -27,16 +32,10 @@ try {
         path.join(projectRoot, 'src')
       ]
     });
+  } catch (err) {
+    console.error('Error setting up hot reload:', err);
   }
-} catch (err) {
-  console.error('Error setting up hot reload:', err);
 }
-
-let mainWindow: BrowserWindow | null = null;
-let serverInstance: Awaited<ReturnType<typeof setupServer>> | null = null;
-
-const isDev = process.env.NODE_ENV === 'development';
-const NEXT_PORT = process.env.PORT || 3002;
 
 async function startServer() {
   console.log('Starting Express server...');
@@ -64,14 +63,22 @@ async function createWindow() {
     });
   }
 
+  // Prevent multiple windows from being created
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    return;
+  }
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      webSecurity: true, // Enable web security
-      allowRunningInsecureContent: false // Disable running insecure content
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      preload: join(__dirname, 'preload.js')
     }
   });
 
@@ -80,6 +87,17 @@ async function createWindow() {
     console.log(`Loading development server at http://localhost:${NEXT_PORT}`);
     await mainWindow.loadURL(`http://localhost:${NEXT_PORT}`);
     mainWindow.webContents.openDevTools();
+
+    // Listen for webContents 'did-fail-load' event
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      console.error('Failed to load URL:', errorDescription);
+      // Retry loading after a short delay
+      setTimeout(() => {
+        if (mainWindow) {
+          mainWindow.loadURL(`http://localhost:${NEXT_PORT}`);
+        }
+      }, 1000);
+    });
   } else {
     // In production, use the built Next.js app
     await mainWindow.loadFile(join(__dirname, '../../out/index.html'));
