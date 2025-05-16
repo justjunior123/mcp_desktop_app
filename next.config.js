@@ -26,7 +26,7 @@ const nextConfig = {
 
     // Handle native modules in Electron
     if (!isServer) {
-      config.target = 'electron-renderer';
+      config.target = 'web';
       
       // Enable HMR in development
       if (dev) {
@@ -36,6 +36,16 @@ const nextConfig = {
           chunkIds: 'named'
         };
       }
+
+      // Provide polyfills for browser environment
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        path: false,
+        fs: false,
+        crypto: false,
+        stream: false,
+        os: false
+      };
     }
     
     return config;
