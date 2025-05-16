@@ -8,15 +8,13 @@
   "scripts": {
     "dev": "npm run clean && npm run kill-ports && concurrently \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:next": "next dev -p 3002",
-    "dev:electron": "wait-on -t 60000 -v tcp:3002 && tsc -p electron/tsconfig.json && cross-env NODE_ENV=development electron .",
-    "build": "next build && npm run build:electron",
-    "build:electron": "tsc -p electron/tsconfig.json",
+    "dev:electron": "tsc -p electron/tsconfig.json && cross-env NODE_ENV=development ELECTRON_HMR=true electron .",
+    "build": "next build && tsc -p electron/tsconfig.json",
     "start": "next start -p 3002",
     "lint": "next lint",
     "kill-ports": "kill-port 3002 3100 || true",
     "clean": "rimraf .next out dist",
-    "watch:electron": "tsc -p electron/tsconfig.json -w",
-    "build:all": "npm run clean && next build && npm run build:electron && electron-builder",
+    "build:all": "npm run clean && next build && tsc -p electron/tsconfig.json && electron-builder",
     "prisma:studio": "dotenv -e .env prisma studio",
     "prisma:migrate": "dotenv -e .env prisma migrate dev",
     "prisma:generate": "dotenv -e .env prisma generate"
