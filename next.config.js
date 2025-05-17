@@ -60,6 +60,11 @@ const nextConfig = {
     if (!isServer) {
       config.target = 'electron-renderer';
       
+      // Configure hot reload for Electron
+      if (dev) {
+        config.plugins.push(new webpack.HotModuleReplacementPlugin());
+      }
+      
       // Disable Next.js polyfills that conflict with Electron
       config.resolve.fallback = {
         ...config.resolve.fallback,

@@ -24,24 +24,24 @@ const ModelsPage: React.FC = () => {
   const { sendMessage, isConnected } = useWebSocket(getWsUrl('ws'), {
     onMessage: (message: WebSocketMessageUnion) => {
       try {
-        if (message.type === 'initialStatus') {
+      if (message.type === 'initialStatus') {
           setModels(message.payload.models || []);
-          setLoading(false);
+        setLoading(false);
           setError(null);
-        } else if (message.type === 'modelStatusUpdate') {
+      } else if (message.type === 'modelStatusUpdate') {
           const { modelId, status, progress } = message.payload;
           updateModelStatus({
             modelId,
             status: status as OllamaModelDetails['status'],
             progress
           });
-        } else if (message.type === 'modelDetails') {
-          setSelectedModel(message.payload);
-          setViewMode('details');
-        } else if (message.type === 'parametersSaved') {
-          fetchModels();
-          setViewMode('details');
-        } else if (message.type === 'error') {
+      } else if (message.type === 'modelDetails') {
+        setSelectedModel(message.payload);
+        setViewMode('details');
+      } else if (message.type === 'parametersSaved') {
+        fetchModels();
+        setViewMode('details');
+      } else if (message.type === 'error') {
           setError(message.payload.message);
         }
       } catch (err) {
@@ -237,29 +237,29 @@ const ModelsPage: React.FC = () => {
 
     if (viewMode === 'details' && selectedModel) {
       return (
-        <ModelDetails
-          model={selectedModel}
+          <ModelDetails
+            model={selectedModel}
           onBack={() => setViewMode('list')}
-          onConfigure={handleConfigureModel}
-        />
+            onConfigure={handleConfigureModel}
+          />
       );
     }
 
     if (viewMode === 'config' && selectedModel) {
       return (
-        <ModelConfigForm
-          model={selectedModel}
-          onSave={handleSaveParameters}
+          <ModelConfigForm
+            model={selectedModel}
+            onSave={handleSaveParameters}
           onBack={() => setViewMode('details')}
-        />
+          />
       );
     }
 
-    return (
-      <>
-        <ModelList
-          models={models}
-          onViewDetails={handleViewDetails}
+        return (
+          <>
+            <ModelList
+              models={models}
+              onViewDetails={handleViewDetails}
           onConfigureModel={handleConfigureModel}
           onPullModel={handlePullModel}
           onDeleteModel={handleDeleteModel}
@@ -269,15 +269,15 @@ const ModelsPage: React.FC = () => {
             model={selectedModel}
             onPull={handlePullModel}
             onDelete={handleDeleteModel}
-            onConfigure={handleConfigureModel}
-          />
+              onConfigure={handleConfigureModel}
+            />
         )}
         <ServerStatusCard
           isConnected={isConnected}
           onRefresh={() => sendMessage({ type: 'refreshModels' })}
         />
-      </>
-    );
+          </>
+        );
   };
 
   return (

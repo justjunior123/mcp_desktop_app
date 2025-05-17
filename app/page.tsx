@@ -6,7 +6,7 @@ export default function Home() {
           MCP Desktop App
         </h1>
         <p className="text-center text-gray-600 dark:text-gray-400">
-          Your local LLM management interface
+          Your local LLM management
         </p>
       </div>
     </main>

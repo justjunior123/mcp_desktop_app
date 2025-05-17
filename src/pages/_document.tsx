@@ -5,7 +5,7 @@ export default function Document() {
     <Html lang="en">
       <Head>
         <script dangerouslySetInnerHTML={{
-          __html: `
+            __html: `
             if (typeof Symbol === 'undefined' || !Symbol.iterator) {
               Object.defineProperty(window, 'Symbol', {
                 value: function Symbol(description) {
@@ -35,7 +35,7 @@ export default function Document() {
                   configurable: true
                 });
               }
-            }
+              }
           `
         }} />
       </Head>

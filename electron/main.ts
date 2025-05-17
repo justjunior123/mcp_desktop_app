@@ -57,11 +57,21 @@ import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-insta
 import { DatabaseService } from './services/database/DatabaseService';
 import { setupServer } from './server';
 
+// Enable hot reload in development
+if (isDev) {
+  try {
+    require('electron-reloader')(module, {
+      debug: true,
+      watchRenderer: true
+    });
+  } catch (_) { console.log('Error loading electron-reloader'); }
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 async function createWindow() {
   console.log('🎯 Creating Electron window...');
-  
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -70,7 +80,8 @@ async function createWindow() {
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: true // Explicitly enable devTools
     }
   });
 
@@ -91,8 +102,9 @@ async function createWindow() {
   console.log('🌐 Loading development server at', startURL);
   await mainWindow.loadURL(startURL);
 
-  // Install React DevTools only in development
+  // Open DevTools automatically in development mode
   if (isDev) {
+    mainWindow.webContents.openDevTools();
     try {
       await installExtension(REACT_DEVELOPER_TOOLS);
       console.log('✅ React DevTools installed');
@@ -112,13 +124,13 @@ async function createWindow() {
 }
 
 app.on('ready', async () => {
-  console.log('🚀 Starting application...');
+    console.log('🚀 Starting application...');
   
   if (isDev) {
     console.log('🔄 Enabling hot reload...');
   }
   
-  await createWindow();
+      await createWindow();
 });
 
 app.on('window-all-closed', () => {
