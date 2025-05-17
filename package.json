@@ -25,7 +25,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.3",
     "@prisma/client": "^6.7.0",
-    "@tailwindcss/postcss": "^4.1.7",
     "@types/classnames": "^2.3.0",
     "@types/cors": "^2.8.18",
     "axios": "^1.6.2",
@@ -93,7 +92,7 @@
     "stream-http": "^3.2.0",
     "string-replace-loader": "^3.1.0",
     "supertest": "^7.1.1",
-    "tailwindcss": "^4.1.7",
+    "tailwindcss": "^3.4.17",
     "ts-jest": "^29.3.4",
     "typescript": "^5.3.3",
     "url": "^0.11.4",
