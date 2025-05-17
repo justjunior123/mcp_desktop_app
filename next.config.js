@@ -1,4 +1,5 @@
 const webpack = require('webpack');
+const path = require('path');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -7,31 +8,17 @@ const nextConfig = {
     domains: ['i.pravatar.cc'],
     unoptimized: process.env.NODE_ENV === 'development'
   },
-  experimental: {
-    externalDir: true
+  turbopack: {
+    loaders: {
+      // Configure loaders for Electron
+      '.js': 'jsx',
+      '.ts': 'tsx'
+    }
   },
   webpack: (config, { isServer, dev }) => {
-    // Handle ESM modules properly
-    config.resolve.extensionAlias = {
-      '.js': ['.js', '.ts', '.tsx'],
-      '.jsx': ['.jsx', '.tsx']
-    };
-    
-    // Ensure babel-loader ignores .cjs files
-    if (config.module && config.module.rules) {
-      const babelRule = config.module.rules.find((rule) => {
-        return rule.test && rule.test.toString().includes('jsx');
-      });
-      
-      if (babelRule) {
-        babelRule.exclude = [/node_modules/, /\.cjs$/];
-      }
-    }
-
-    // Add polyfills
     if (!isServer) {
+      // Client-side polyfills and fallbacks
       config.resolve.fallback = {
-        ...config.resolve.fallback,
         fs: false,
         net: false,
         tls: false,
@@ -45,76 +32,59 @@ const nextConfig = {
         os: require.resolve('os-browserify/browser'),
         path: require.resolve('path-browserify'),
         process: require.resolve('process/browser'),
-        buffer: require.resolve('buffer/'),
+        buffer: require.resolve('buffer/')
       };
 
+      // Configure for Electron renderer
+      config.target = 'electron-renderer';
+
+      // Add process and Buffer polyfills
       config.plugins.push(
         new webpack.ProvidePlugin({
           process: 'process/browser',
-          Buffer: ['buffer', 'Buffer'],
+          Buffer: ['buffer', 'Buffer']
         })
       );
-    }
 
-    // Handle native modules in Electron
-    if (!isServer) {
-      config.target = 'electron-renderer';
-      
-      // Configure hot reload for Electron
       if (dev) {
-        config.plugins.push(new webpack.HotModuleReplacementPlugin());
+        // Development specific configuration
+        config.optimization = {
+          minimize: false
+        };
+
+        config.plugins.push(
+          new webpack.DefinePlugin({
+            'global': 'globalThis',
+            'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+            'process.env.ELECTRON_HMR': JSON.stringify(true)
+          })
+        );
       }
-      
-      // Disable Next.js polyfills that conflict with Electron
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-        os: false,
-        crypto: false,
-        stream: false
-      };
     }
 
-    // Optimize chunks for Electron
-    if (!isServer && !dev) {
-      config.optimization = {
-        ...config.optimization,
-        moduleIds: 'named',
-        chunkIds: 'named',
-        splitChunks: {
-          ...config.optimization?.splitChunks,
-          chunks: 'all',
-          minSize: 20000,
-          hidePathInfo: true,
-          automaticNameDelimiter: '~'
-        },
-        removeAvailableModules: false,
-        removeEmptyChunks: false,
-        mergeDuplicateChunks: false
-      };
-
-      config.watchOptions = {
-        aggregateTimeout: 200,
-        poll: 1000,
-        ignored: ['**/node_modules', '**/.next']
-      };
-    }
-
-    // Add path aliases
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': require('path').resolve(__dirname, './src'),
-      '@components': require('path').resolve(__dirname, './src/components'),
-      '@lib': require('path').resolve(__dirname, './src/lib'),
-      '@services': require('path').resolve(__dirname, './src/services'),
-      '@utils': require('path').resolve(__dirname, './src/utils'),
-      '@hooks': require('path').resolve(__dirname, './src/hooks'),
-      '@models': require('path').resolve(__dirname, './src/models'),
-      '@api': require('path').resolve(__dirname, './src/api')
-    };
-    
     return config;
+  },
+  // Security headers
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: `
+              default-src 'self';
+              script-src 'self' 'unsafe-eval' 'unsafe-inline';
+              style-src 'self' 'unsafe-inline';
+              img-src 'self' data: https:;
+              font-src 'self';
+              connect-src 'self' http://localhost:* ws://localhost:*;
+              worker-src 'self' blob:;
+            `.replace(/\s+/g, ' ').trim()
+          }
+        ]
+      }
+    ];
   },
   compress: process.env.NODE_ENV === 'production',
   poweredByHeader: false

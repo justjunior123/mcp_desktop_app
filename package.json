@@ -7,7 +7,7 @@
   "main": "dist/electron/electron/main.js",
   "scripts": {
     "dev": "npm run clean && npm run kill-ports && npm run db:setup && concurrently \"npm run dev:next\" \"npm run dev:electron\" \"npm run prisma:studio\"",
-    "dev:next": "next dev -p 3002",
+    "dev:next": "next dev --turbo -p 3002",
     "dev:electron": "tsc -p electron/tsconfig.json && cross-env NODE_ENV=development ELECTRON_HMR=true electron .",
     "build": "next build && tsc -p electron/tsconfig.json",
     "start": "next start -p 3002",
@@ -35,10 +35,11 @@
     "electron-updater": "^6.6.2",
     "express": "^4.18.2",
     "express-rate-limit": "^7.5.0",
-    "next": "^14.0.4",
+    "next": "^15.3.2",
     "prisma": "^6.7.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-server-dom-webpack": "^19.1.0",
     "uuid": "^11.1.0",
     "ws": "^8.18.2"
   },
@@ -51,7 +52,6 @@
     "@babel/preset-typescript": "^7.23.3",
     "@babel/runtime-corejs3": "^7.27.1",
     "@electron/remote": "^2.1.2",
-    "@tailwindcss/postcss7-compat": "^2.2.17",
     "@testing-library/jest-dom": "^6.6.3",
     "@types/body-parser": "^1.19.5",
     "@types/express": "^5.0.1",
@@ -67,6 +67,7 @@
     "@typescript-eslint/parser": "^6.15.0",
     "assert": "^2.1.0",
     "autoprefixer": "^10.4.21",
+    "babel-loader": "^10.0.0",
     "browserify-zlib": "^0.2.0",
     "buffer": "^6.0.3",
     "concurrently": "^9.1.2",
@@ -96,6 +97,7 @@
     "typescript": "^5.3.3",
     "url": "^0.11.4",
     "wait-on": "^8.0.3",
-    "webpack": "^5.99.8"
+    "webpack": "^5.99.8",
+    "webpack-hot-middleware": "^2.26.1"
   }
 }

@@ -1,32 +1,76 @@
-// Polyfill global object for browser environment
-if (typeof window !== 'undefined') {
-  (window as any).global = window;
-  (window as any).process = {
-    env: {
-      ELECTRON_HMR: process.env.ELECTRON_HMR,
-      ...process.env
-    },
-    browser: true,
-    version: process.version,
-    platform: process.platform
-  };
-  (window as any).Buffer = Buffer;
-  
-  // Add any additional browser-specific polyfills here
-  if (!window.requestIdleCallback) {
-    (window as any).requestIdleCallback = (
-      callback: IdleRequestCallback,
-      options?: IdleRequestOptions
-    ): number => {
-      return Number(setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 1));
-    };
-    (window as any).cancelIdleCallback = (id: number): void => {
-      clearTimeout(id);
+// Initialize required globals
+(() => {
+  // Ensure Symbol exists
+  if (typeof Symbol === 'undefined') {
+    (window as any).Symbol = function Symbol(description?: string | number) {
+      return `Symbol(${description})`;
     };
   }
 
-  // Ensure Symbol.iterator is available
-  if (typeof Symbol !== 'undefined' && !Symbol.iterator) {
-    (Symbol as any).iterator = Symbol('Symbol.iterator');
+  // Ensure Symbol.iterator exists
+  if (!Symbol.iterator) {
+    Object.defineProperty(Symbol, 'iterator', {
+      value: Symbol('iterator'),
+      writable: false,
+      enumerable: false,
+      configurable: false
+    });
   }
-} 
+
+  // Make globalThis available and extensible
+  const globalObj = globalThis as any;
+  
+  // Ensure global is available
+  if (typeof global === 'undefined') {
+    globalObj.global = globalThis;
+  }
+
+  // Make global object extensible for webpack HMR
+  if (!Object.getOwnPropertyDescriptor(globalObj, '__webpack_require__')) {
+    Object.defineProperty(globalObj, '__webpack_require__', {
+      enumerable: false,
+      writable: true,
+      configurable: true,
+      value: undefined
+    });
+  }
+
+  // Add iterator support to global object
+  if (!globalObj[Symbol.iterator]) {
+    Object.defineProperty(globalObj, Symbol.iterator, {
+      enumerable: false,
+      writable: true,
+      configurable: true,
+      value: function* () {
+        yield* Object.values(this);
+      }
+    });
+  }
+
+  // Ensure process is available with correct environment
+  if (typeof process === 'undefined') {
+    const currentProcess = process as NodeJS.Process | undefined;
+    globalObj.process = { 
+      env: { 
+        NODE_ENV: currentProcess?.env?.NODE_ENV || 'development',
+        ELECTRON_HMR: currentProcess?.env?.ELECTRON_HMR || 'true'
+      },
+      browser: true
+    };
+  }
+
+  // Ensure Buffer is available
+  if (typeof Buffer === 'undefined') {
+    globalObj.Buffer = require('buffer').Buffer;
+  }
+
+  // Make object extensible for HMR
+  Object.defineProperty(globalObj, 'webpackHotUpdate_N_E', {
+    configurable: true,
+    writable: true,
+    value: undefined
+  });
+})();
+
+export {}; 
+export {}; 
