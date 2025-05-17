@@ -6,11 +6,7 @@ const nextConfig = {
     domains: ['i.pravatar.cc'],
     unoptimized: process.env.NODE_ENV === 'development'
   },
-  // Fix experimental features configuration
   experimental: {
-    // Remove invalid options
-    serverComponentsExternalPackages: [],
-    // Add proper error handling
     externalDir: true
   },
   webpack: (config, { isServer, dev }) => {
@@ -29,53 +25,6 @@ const nextConfig = {
       if (babelRule) {
         babelRule.exclude = [/node_modules/, /\.cjs$/];
       }
-
-      // Add loaders to remove React DevTools message
-      config.module.rules.push(
-        {
-          test: /react-dom\.development\.js$/,
-          loader: 'string-replace-loader',
-          options: {
-            search: 'Download the React DevTools[^"]*',
-            replace: '',
-            flags: 'g'
-          }
-        },
-        {
-          // More specific rule for the exact file
-          test: /next\/dist\/compiled\/react-dom\/cjs\/react-dom\.development\.js$/,
-          loader: 'string-replace-loader',
-          options: {
-            multiple: [
-              {
-                search: 'Download the React DevTools for a better development experience',
-                replace: ''
-              },
-              {
-                search: 'https://reactjs.org/link/react-devtools',
-                replace: ''
-              },
-              {
-                // Remove the entire console.log statement
-                search: /console\.[a-z]+\(\s*(['"])%cDownload the React DevTools[^;]+;/g,
-                replace: ''
-              }
-            ]
-          }
-        }
-      );
-
-      // Add loader to suppress RSC connection warnings in development
-      if (dev) {
-        config.module.rules.push({
-          test: /next\/dist\/client\/app-index\.js$/,
-          loader: 'string-replace-loader',
-          options: {
-            search: 'Failed to fetch RSC payload',
-            replace: ''
-          }
-        });
-      }
     }
 
     // Handle native modules in Electron
@@ -88,7 +37,6 @@ const nextConfig = {
           ...config.optimization,
           moduleIds: 'named',
           chunkIds: 'named',
-          // Add error handling for null objects
           splitChunks: {
             ...config.optimization?.splitChunks,
             chunks: 'all',
@@ -99,12 +47,6 @@ const nextConfig = {
           }
         };
 
-        // Add retry logic for development server connections
-        config.infrastructureLogging = {
-          level: 'warn'
-        };
-        
-        // Increase timeouts for development
         config.watchOptions = {
           aggregateTimeout: 200,
           poll: 1000,
@@ -112,33 +54,18 @@ const nextConfig = {
         };
       }
 
-      // Provide polyfills for browser environment
+      // Provide minimal fallbacks for browser environment
       config.resolve.fallback = {
         ...config.resolve.fallback,
         path: false,
-        fs: false,
-        crypto: false,
-        stream: false,
-        os: false
-      };
-
-      // Add error handling for null iterables
-      config.module.parser = {
-        javascript: {
-          ...config.module.parser?.javascript,
-          strictExportPresence: true,
-          exportsPresence: 'error'
-        }
+        fs: false
       };
     }
     
     return config;
   },
-  // Add compression
   compress: true,
-  // Add powered by header
   poweredByHeader: false,
-  // Enable strict mode for better error catching
   typescript: {
     ignoreBuildErrors: false,
   },

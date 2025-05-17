@@ -1,3 +1,8 @@
+// Define custom iterable interface
+interface CustomIterable {
+  [Symbol.iterator]?: () => Iterator<any>;
+}
+
 // Initialize Symbol.iterator before anything else
 (() => {
   // Ensure Symbol exists globally
@@ -18,43 +23,34 @@
   }
 
   // Add iterator support to Object prototype if not present
-  interface Iterable<T = any> {
-    [Symbol.iterator]?: () => Iterator<T>;
-  }
-
-  const proto = Object.prototype as unknown as Iterable;
+  const proto = Object.prototype as unknown as CustomIterable;
   if (!proto[Symbol.iterator]) {
     Object.defineProperty(proto, Symbol.iterator, {
       enumerable: false,
       writable: true,
       configurable: true,
       value: function* () {
-        yield* Object.values(this);
+        for (const key of Object.keys(this)) {
+          yield (this as any)[key];
+        }
       }
     });
   }
 
-  // Ensure these exist in the global scope
-  const globalObjects = [
-    typeof global !== 'undefined' ? global : null,
-    typeof window !== 'undefined' ? window : null,
-    typeof self !== 'undefined' ? self : null,
-    typeof process !== 'undefined' ? process : null
-  ].filter(Boolean) as Array<Iterable>;
-
-  // Make all global objects iterable
-  globalObjects.forEach(obj => {
-    if (obj && !obj[Symbol.iterator]) {
-      Object.defineProperty(obj, Symbol.iterator, {
-        enumerable: false,
-        writable: true,
-        configurable: true,
-        value: function* () {
-          yield* Object.values(this);
+  // Make global object iterable
+  const globalObj = global as unknown as CustomIterable;
+  if (globalObj && !(globalObj as any)[Symbol.iterator]) {
+    Object.defineProperty(globalObj, Symbol.iterator, {
+      enumerable: false,
+      writable: true,
+      configurable: true,
+      value: function* () {
+        for (const key of Object.keys(this)) {
+          yield (this as any)[key];
         }
-      });
-    }
-  });
+      }
+    });
+  }
 })();
 
 'use strict';
@@ -85,19 +81,65 @@ declare global {
   }
 }
 
-// Initialize React DevTools hook
-if (typeof window !== 'undefined') {
-  const win = window as any;
-  if (!win.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
-    win.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
-      supportsFiber: true,
-      inject: () => {},
-      onCommitFiberRoot: () => {},
-      onCommitFiberUnmount: () => {},
-      isDisabled: true,
-      renderers: new Map()
-    };
+// Wait for window to be defined
+const initWindow = () => {
+  if (typeof window !== 'undefined') {
+    // Initialize React DevTools hook
+    const win = window as any;
+    if (!win.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+      win.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+        supportsFiber: true,
+        inject: () => {},
+        onCommitFiberRoot: () => {},
+        onCommitFiberUnmount: () => {},
+        isDisabled: true,
+        renderers: new Map()
+      };
+    }
+
+    // Add iterator support to window
+    if (!(win as any)[Symbol.iterator]) {
+      Object.defineProperty(win, Symbol.iterator, {
+        enumerable: false,
+        writable: true,
+        configurable: true,
+        value: function* () {
+          for (const key of Object.keys(this)) {
+            yield (this as any)[key];
+          }
+        }
+      });
+    }
+
+    // Initialize drag event handling
+    window.addEventListener('dragover', (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.dragEvent = e;
+    }, false);
+
+    window.addEventListener('drop', (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.dragEvent = e;
+    }, false);
+
+    window.addEventListener('dragleave', (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.dragEvent = undefined;
+    }, false);
   }
+};
+
+// Initialize as soon as possible
+initWindow();
+
+// Also initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initWindow);
+} else {
+  initWindow();
 }
 
 // Early console override
@@ -134,27 +176,6 @@ declare global {
   }
 }
 
-// Initialize drag event handling
-if (typeof window !== 'undefined') {
-  window.addEventListener('dragover', (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    window.dragEvent = e;
-  }, false);
-
-  window.addEventListener('drop', (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    window.dragEvent = e;
-  }, false);
-
-  window.addEventListener('dragleave', (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    window.dragEvent = undefined;
-  }, false);
-}
-
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 const api = {
@@ -166,7 +187,7 @@ const api = {
   }
 } as const;
 
-// Add iterator support
+// Add iterator support to api
 Object.defineProperty(api, Symbol.iterator, {
   enumerable: false,
   writable: true,
@@ -176,4 +197,4 @@ Object.defineProperty(api, Symbol.iterator, {
   }
 });
 
-contextBridge.exposeInMainWorld('api', api); 
+contextBridge.exposeInMainWorld('electron', api); 
