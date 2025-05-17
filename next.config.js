@@ -1,7 +1,8 @@
+const webpack = require('webpack');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
   images: {
     domains: ['i.pravatar.cc'],
     unoptimized: process.env.NODE_ENV === 'development'
@@ -27,51 +28,91 @@ const nextConfig = {
       }
     }
 
-    // Handle native modules in Electron
+    // Add polyfills
     if (!isServer) {
-      config.target = 'web';
-      
-      // Enable HMR in development
-      if (dev) {
-        config.optimization = {
-          ...config.optimization,
-          moduleIds: 'named',
-          chunkIds: 'named',
-          splitChunks: {
-            ...config.optimization?.splitChunks,
-            chunks: 'all',
-            minSize: 20000,
-            maxSize: 244000,
-            hidePathInfo: true,
-            automaticNameDelimiter: '~'
-          }
-        };
-
-        config.watchOptions = {
-          aggregateTimeout: 200,
-          poll: 1000,
-          ignored: ['**/node_modules', '**/.next']
-        };
-      }
-
-      // Provide minimal fallbacks for browser environment
       config.resolve.fallback = {
         ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: require.resolve('crypto-browserify'),
+        stream: require.resolve('stream-browserify'),
+        url: require.resolve('url/'),
+        zlib: require.resolve('browserify-zlib'),
+        http: require.resolve('stream-http'),
+        https: require.resolve('https-browserify'),
+        assert: require.resolve('assert/'),
+        os: require.resolve('os-browserify/browser'),
+        path: require.resolve('path-browserify'),
+        process: require.resolve('process/browser'),
+        buffer: require.resolve('buffer/'),
+      };
+
+      config.plugins.push(
+        new webpack.ProvidePlugin({
+          process: 'process/browser',
+          Buffer: ['buffer', 'Buffer'],
+        })
+      );
+    }
+
+    // Handle native modules in Electron
+    if (!isServer) {
+      config.target = 'electron-renderer';
+      
+      // Disable Next.js polyfills that conflict with Electron
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
         path: false,
-        fs: false
+        os: false,
+        crypto: false,
+        stream: false
       };
     }
+
+    // Optimize chunks for Electron
+    if (!isServer && !dev) {
+      config.optimization = {
+        ...config.optimization,
+        moduleIds: 'named',
+        chunkIds: 'named',
+        splitChunks: {
+          ...config.optimization?.splitChunks,
+          chunks: 'all',
+          minSize: 20000,
+          hidePathInfo: true,
+          automaticNameDelimiter: '~'
+        },
+        removeAvailableModules: false,
+        removeEmptyChunks: false,
+        mergeDuplicateChunks: false
+      };
+
+      config.watchOptions = {
+        aggregateTimeout: 200,
+        poll: 1000,
+        ignored: ['**/node_modules', '**/.next']
+      };
+    }
+
+    // Add path aliases
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': require('path').resolve(__dirname, './src'),
+      '@components': require('path').resolve(__dirname, './src/components'),
+      '@lib': require('path').resolve(__dirname, './src/lib'),
+      '@services': require('path').resolve(__dirname, './src/services'),
+      '@utils': require('path').resolve(__dirname, './src/utils'),
+      '@hooks': require('path').resolve(__dirname, './src/hooks'),
+      '@models': require('path').resolve(__dirname, './src/models'),
+      '@api': require('path').resolve(__dirname, './src/api')
+    };
     
     return config;
   },
-  compress: true,
-  poweredByHeader: false,
-  typescript: {
-    ignoreBuildErrors: false,
-  },
-  eslint: {
-    ignoreDuringBuilds: false,
-  }
+  compress: process.env.NODE_ENV === 'production',
+  poweredByHeader: false
 };
 
 module.exports = nextConfig; 

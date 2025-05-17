@@ -38,7 +38,7 @@ function serializeBigInt(obj: any): any {
   }
   
   if (typeof obj === 'bigint') {
-    return Number(obj);
+    return obj.toString(); // Convert to string instead of Number to preserve precision
   }
   
   if (Array.isArray(obj)) {

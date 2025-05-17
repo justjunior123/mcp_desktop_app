@@ -28,9 +28,9 @@ describe('OllamaBridge', () => {
         format: 'gguf',
         family: 'llama',
         families: ['llama'],
-        parent_model: 'llama2',
         parameter_size: '7B',
-        quantization_level: 'Q4_K_M'
+        quantization_level: 'Q4_K_M',
+        parent_model: ''
       }]
     });
     
