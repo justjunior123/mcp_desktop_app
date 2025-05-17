@@ -1,14 +1,25 @@
 // Initialize Symbol.iterator before anything else
 (() => {
+  // Ensure Symbol exists globally
+  if (typeof Symbol === 'undefined') {
+    (global as any).Symbol = function Symbol(description?: string | number) {
+      return `Symbol(${description})`;
+    };
+  }
+
   // Ensure Symbol.iterator exists globally
-  if (typeof Symbol === 'undefined' || !Symbol.iterator) {
-    (global as any).Symbol = (global as any).Symbol || {};
-    (global as any).Symbol.iterator = (global as any).Symbol.iterator || Symbol('Symbol.iterator');
+  if (!Symbol.iterator) {
+    Object.defineProperty(Symbol, 'iterator', {
+      value: Symbol('iterator'),
+      writable: false,
+      enumerable: false,
+      configurable: false
+    });
   }
 
   // Add iterator support to Object prototype if not present
-  interface Iterable {
-    [Symbol.iterator]?: () => Iterator<unknown>;
+  interface Iterable<T = any> {
+    [Symbol.iterator]?: () => Iterator<T>;
   }
 
   const proto = Object.prototype as unknown as Iterable;
@@ -40,7 +51,6 @@ const rscPayloadPattern = /Failed to fetch RSC payload.*Falling back to browser 
 // Suppress specific Electron warnings in development
 if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
-  // Suppress React DevTools message
   process.env.REACT_DEVTOOLS_INSTALLED = 'true';
   
   // Enhanced console filtering
@@ -76,7 +86,7 @@ if (isDev) {
     const projectRoot = path.join(__dirname, '../..');
     
     require('electron-reloader')(module, {
-      debug: false, // Disable debug messages
+      debug: false,
       watchRenderer: true,
       ignore: [
         'node_modules',
@@ -115,22 +125,7 @@ app.on('ready', () => {
 
   // Initialize renderer process globals
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    if (details.url.includes('renderer.bundle.js')) {
-      callback({
-        cancel: false,
-        // Inject Symbol.iterator polyfill
-        redirectURL: `data:application/javascript;base64,${Buffer.from(`
-          if (typeof Symbol === 'undefined' || !Symbol.iterator) {
-            Object.defineProperty(Symbol, 'iterator', { value: Symbol('iterator') });
-          }
-          Object.prototype[Symbol.iterator] = function* () {
-            yield* Object.values(this);
-          };
-        `).toString('base64')}`
-      });
-    } else {
-      callback({ cancel: false });
-    }
+    callback({ cancel: false });
   });
 });
 

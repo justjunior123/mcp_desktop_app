@@ -1,12 +1,13 @@
 import React from 'react';
 import { OllamaModelDetails } from '../../services/ollama/ModelManager';
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
+function formatBytes(bytes: bigint | number): string {
+  if (bytes === 0n || bytes === 0) return '0 Bytes';
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  const bytesNum = typeof bytes === 'bigint' ? Number(bytes) : bytes;
+  const i = Math.floor(Math.log(bytesNum) / Math.log(k));
+  return `${parseFloat((bytesNum / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
 interface ModelDetailsProps {

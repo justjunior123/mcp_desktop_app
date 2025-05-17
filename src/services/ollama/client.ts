@@ -32,6 +32,13 @@ export class OllamaClient {
     }
   }
 
+  private transformModelInfo(model: any): OllamaModelInfo {
+    return {
+      ...model,
+      size: BigInt(model.size || 0),
+    };
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/api/tags`);
@@ -89,14 +96,13 @@ export class OllamaClient {
       
       const data = JSON.parse(text);
       
-      // The Ollama API returns an array directly, so we need to wrap it
+      // Transform the response to handle BigInt
       if (Array.isArray(data)) {
-        return { models: data };
+        return { models: data.map(this.transformModelInfo) };
       }
       
-      // If it's already in the expected format, return as is
       if (data && Array.isArray(data.models)) {
-        return data;
+        return { models: data.models.map(this.transformModelInfo) };
       }
       
       throw new OllamaError('Invalid response format from /api/tags');

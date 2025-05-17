@@ -35,15 +35,17 @@ export class OllamaModelManager {
         
         const modelData: OllamaModelData = {
           name: model.name,
-          size: model.size,
+          size: BigInt(model.size), // Convert to BigInt
           digest: model.digest,
-          format: model.details.format,
-          family: model.details.family,
+          format: model.format || 'gguf',
+          family: model.family || 'unknown',
           parameters: {
-            families: model.details.families || [],
-            parameter_size: model.details.parameter_size,
-            quantization_level: model.details.quantization_level,
-            ...model.details
+            families: model.families || [],
+            parameter_size: model.parameter_size || undefined,
+            quantization_level: model.quantization_level || undefined,
+            parent_model: model.parent_model || '',
+            format: model.format || 'gguf',
+            family: model.family || 'unknown'
           },
           isDownloaded: true,
           status: 'READY'
@@ -61,8 +63,25 @@ export class OllamaModelManager {
     try {
       await this.prisma.ollamaModel.upsert({
         where: { name: modelData.name },
-        create: modelData,
-        update: modelData
+        create: {
+          name: modelData.name,
+          size: modelData.size,
+          digest: modelData.digest,
+          format: modelData.format || 'gguf',
+          family: modelData.family || 'unknown',
+          parameters: modelData.parameters || {},
+          isDownloaded: modelData.isDownloaded || false,
+          status: modelData.status || 'NOT_DOWNLOADED'
+        },
+        update: {
+          size: modelData.size,
+          digest: modelData.digest,
+          format: modelData.format || 'gguf',
+          family: modelData.family || 'unknown',
+          parameters: modelData.parameters || {},
+          isDownloaded: modelData.isDownloaded || false,
+          status: modelData.status || 'NOT_DOWNLOADED'
+        }
       });
     } catch (error) {
       console.error(`Error upserting model ${modelData.name}:`, error);

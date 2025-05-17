@@ -1,13 +1,13 @@
 // Initialize Symbol.iterator before anything else
 (() => {
-  // Ensure Symbol exists
+  // Ensure Symbol exists globally
   if (typeof Symbol === 'undefined') {
     (global as any).Symbol = function Symbol(description?: string | number) {
       return `Symbol(${description})`;
     };
   }
 
-  // Ensure Symbol.iterator exists
+  // Ensure Symbol.iterator exists globally
   if (!Symbol.iterator) {
     Object.defineProperty(Symbol, 'iterator', {
       value: Symbol('iterator'),
@@ -34,10 +34,11 @@
     });
   }
 
-  // Ensure these exist before Electron's renderer init
+  // Ensure these exist in the global scope
   const globalObjects = [
     typeof global !== 'undefined' ? global : null,
     typeof window !== 'undefined' ? window : null,
+    typeof self !== 'undefined' ? self : null,
     typeof process !== 'undefined' ? process : null
   ].filter(Boolean) as Array<Iterable>;
 

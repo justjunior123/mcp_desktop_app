@@ -2,21 +2,20 @@ import { Prisma } from '@prisma/client';
 
 export interface OllamaModelInfo {
   name: string;
-  size: number;
+  size: bigint;
   digest: string;
-  details: {
-    format: string;
-    family: string;
-    families?: string[];
-    parameter_size?: string;
-    quantization_level?: string;
-    [key: string]: any;
-  };
+  format?: string;
+  family?: string;
+  families?: string[];
+  parameter_size?: string;
+  quantization_level?: string;
+  parent_model?: string;
+  [key: string]: any;
 }
 
 export interface OllamaModelData {
   name: string;
-  size: number;
+  size: bigint;
   digest: string;
   format?: string;
   family?: string;

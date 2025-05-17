@@ -32,15 +32,32 @@ function cleanConfig(config: Record<string, any> | null | undefined): Record<str
 }
 
 // Helper function to serialize BigInt values
+function serializeBigInt(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  
+  if (typeof obj === 'bigint') {
+    return Number(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(serializeBigInt);
+  }
+  
+  if (typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj).map(([key, value]) => [key, serializeBigInt(value)])
+    );
+  }
+  
+  return obj;
+}
+
+// Helper function to serialize model data
 function serializeModel(model: any) {
-  return {
-    ...model,
-    size: model.size ? Number(model.size) : 0,
-    configuration: model.configuration ? {
-      ...model.configuration,
-      // Convert any other BigInt fields in configuration if needed
-    } : null
-  };
+  if (!model) return null;
+  return serializeBigInt(model);
 }
 
 const router = Router();
