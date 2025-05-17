@@ -23,14 +23,14 @@ describe('OllamaBridge', () => {
     ollamaClient.listModels.mockResolvedValue({
       models: [{
         name: 'test-model',
-        model: 'test-model',
-        modified_at: '2024-05-16T12:00:00Z',
         size: 1000,
         digest: 'test-digest',
         details: {
           format: 'gguf',
           family: 'llama',
           families: ['llama'],
+          parent_model: 'llama2',
+          parameter_size: '7B',
           quantization_level: 'Q4_K_M'
         }
       }]

@@ -18,8 +18,32 @@ export class OllamaError extends Error {
 export class OllamaClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = 'http://localhost:11434') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl: string = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434') {
+    // Ensure baseUrl has http:// prefix and no trailing slash
+    this.baseUrl = baseUrl.startsWith('http://') ? baseUrl : `http://${baseUrl}`;
+    this.baseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+    
+    // Force IPv4
+    this.baseUrl = this.baseUrl.replace('localhost', '127.0.0.1');
+    
+    // Log the configured URL in debug mode
+    if (process.env.OLLAMA_DEBUG) {
+      console.log('Ollama client initialized with URL:', this.baseUrl);
+    }
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`);
+      if (!response.ok) {
+        console.error('Ollama health check failed with status:', response.status);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Ollama health check failed:', error);
+      return false;
+    }
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -36,26 +60,50 @@ export class OllamaClient {
         throw new OllamaError(`HTTP error ${response.status}`, response.status);
       }
 
-      return response.json() as Promise<T>;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new OllamaError(`Failed to connect to Ollama server: ${error.message}`);
+      const text = await response.text();
+      console.log('Raw API response:', text); // Debug logging
+      
+      try {
+        return JSON.parse(text) as T;
+      } catch (parseError) {
+        console.error('Error parsing JSON response:', text);
+        throw new OllamaError('Invalid JSON response from server');
       }
-      throw error;
-    }
-  }
-
-  async healthCheck(): Promise<boolean> {
-    try {
-      await this.listModels();
-      return true;
     } catch (error) {
-      return false;
+      if (error instanceof OllamaError) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new OllamaError(error.message);
+      }
+      throw new OllamaError('Unknown error occurred');
     }
   }
 
   async listModels(): Promise<{ models: OllamaModelInfo[] }> {
-    return this.request('/api/tags');
+    try {
+      // Get raw response first to see what we're dealing with
+      const response = await fetch(`${this.baseUrl}/api/tags`);
+      const text = await response.text();
+      console.log('Raw /api/tags response:', text);
+      
+      const data = JSON.parse(text);
+      
+      // The Ollama API returns an array directly, so we need to wrap it
+      if (Array.isArray(data)) {
+        return { models: data };
+      }
+      
+      // If it's already in the expected format, return as is
+      if (data && Array.isArray(data.models)) {
+        return data;
+      }
+      
+      throw new OllamaError('Invalid response format from /api/tags');
+    } catch (error) {
+      console.error('Error in listModels:', error);
+      throw error instanceof OllamaError ? error : new OllamaError('Failed to list models');
+    }
   }
 
   async getModel(name: string): Promise<OllamaModelInfo> {

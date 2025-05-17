@@ -1,66 +1,73 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { OllamaClient } from './client';
 import { OllamaModelInfo, OllamaModelData } from './types';
 
+type PrismaClientWithModels = PrismaClient & {
+  ollamaModel: any;
+  ollamaModelConfiguration: any;
+};
+
 export class OllamaModelManager {
   constructor(
-    private prisma: PrismaClient,
+    private prisma: PrismaClientWithModels,
     private ollamaClient: OllamaClient
   ) {}
 
   async syncModels(): Promise<void> {
-    // Check if Ollama server is healthy
+    // Check if Ollama is available first
     const isHealthy = await this.ollamaClient.healthCheck();
     if (!isHealthy) {
       throw new Error('Ollama server is not available');
     }
 
-    const { models } = await this.ollamaClient.listModels();
-    
-    // Update database with available models
-    for (const model of models) {
-      await this.upsertModel(model);
-    }
-
-    // Mark models not in Ollama as not downloaded
-    await this.prisma.ollamaModel.updateMany({
-      where: {
-        name: {
-          notIn: models.map(m => m.name)
-        },
-        isDownloaded: true
-      },
-      data: {
-        isDownloaded: false,
-        status: 'NOT_DOWNLOADED',
-        downloadProgress: 0
+    try {
+      const response = await this.ollamaClient.listModels();
+      
+      if (!response || !Array.isArray(response.models)) {
+        throw new Error('Invalid response from Ollama API');
       }
-    });
+      
+      for (const model of response.models) {
+        if (!model || !model.name) {
+          console.warn('Skipping invalid model:', model);
+          continue;
+        }
+        
+        const modelData: OllamaModelData = {
+          name: model.name,
+          size: model.size,
+          digest: model.digest,
+          format: model.details.format,
+          family: model.details.family,
+          parameters: {
+            families: model.details.families || [],
+            parameter_size: model.details.parameter_size,
+            quantization_level: model.details.quantization_level,
+            ...model.details
+          },
+          isDownloaded: true,
+          status: 'READY'
+        };
+        
+        await this.upsertModel(modelData);
+      }
+    } catch (error) {
+      console.error('Error syncing models:', error);
+      throw error;
+    }
   }
 
-  private async upsertModel(model: OllamaModelInfo): Promise<void> {
-    const modelData: OllamaModelData = {
-      name: model.name,
-      size: model.size,
-      digest: model.digest,
-      format: model.details?.format || '',
-      family: model.details?.family || '',
-      parameters: model.details || {}
-    };
-
-    await this.prisma.ollamaModel.upsert({
-      where: { name: model.name },
-      create: {
-        ...modelData,
-        isDownloaded: true,
-        status: 'READY'
-      },
-      update: {
-        ...modelData,
-        isDownloaded: true,
-        status: 'READY'
-      }
-    });
+  private async upsertModel(modelData: OllamaModelData): Promise<void> {
+    try {
+      await this.prisma.ollamaModel.upsert({
+        where: { name: modelData.name },
+        create: modelData,
+        update: modelData
+      });
+    } catch (error) {
+      console.error(`Error upserting model ${modelData.name}:`, error);
+      throw error;
+    }
   }
 
   async getModel(name: string) {
@@ -84,8 +91,9 @@ export class OllamaModelManager {
         name,
         size: 0,
         digest: '',
-        format: '',
-        family: '',
+        format: 'unknown',
+        family: 'unknown',
+        parameters: null,
         status: 'DOWNLOADING',
         downloadProgress: 0
       },

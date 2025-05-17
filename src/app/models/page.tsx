@@ -1,61 +1,71 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ModelList } from '@/components/models/ModelList';
-import { ModelDetails } from '../../components/models/ModelDetails';
-import { ModelConfigForm } from '../../components/models/ModelConfigForm';
-import { useWebSocket } from '../../lib/hooks/useWebSocket';
-import { OllamaModelDetails } from '../../services/ollama/ModelManager';
-import { ModelActions } from '@/components/models/ModelActions';
-import { ServerStatusCard } from '@/components/ServerStatusCard';
+import { ModelList } from '@components/models/ModelList';
+import { ModelDetails } from '@components/models/ModelDetails';
+import { ModelConfigForm } from '@components/models/ModelConfigForm';
+import { useWebSocket } from '@lib/hooks/useWebSocket';
+import { OllamaModelDetails } from '@services/ollama/ModelManager';
+import { ModelActions } from '@components/models/ModelActions';
+import { ServerStatusCard } from '@components/ServerStatusCard';
 import { getApiUrl, getWsUrl } from '@/config/api';
-import { WebSocketMessageUnion } from '../../types/websocket';
+import type { WebSocketMessageUnion } from '@/types/websocket';
 
 type ViewMode = 'list' | 'details' | 'config';
 
 const ModelsPage: React.FC = () => {
   const [models, setModels] = useState<OllamaModelDetails[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<OllamaModelDetails | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // WebSocket connection for real-time updates
   const { sendMessage, isConnected } = useWebSocket(getWsUrl('ws'), {
     onMessage: (message: WebSocketMessageUnion) => {
-      if (message.type === 'initialStatus') {
-        // Initial status with model list
-        setModels(message.payload.models);
-        setLoading(false);
-      } else if (message.type === 'modelStatusUpdate') {
-        // Update model status in the list
-        const { modelId, status, progress } = message.payload;
-        updateModelStatus({
-          modelId,
-          status: status as OllamaModelDetails['status'],
-          progress
-        });
-      } else if (message.type === 'modelDetails') {
-        // Detailed model information
-        setSelectedModel(message.payload);
-        setViewMode('details');
-      } else if (message.type === 'parametersSaved') {
-        // Confirmation of saved parameters
-        fetchModels();
-        setViewMode('details');
-      } else if (message.type === 'error') {
-        // Error message
-        console.error(message.payload.message);
+      try {
+        if (message.type === 'initialStatus') {
+          setModels(message.payload.models || []);
+          setLoading(false);
+          setError(null);
+        } else if (message.type === 'modelStatusUpdate') {
+          const { modelId, status, progress } = message.payload;
+          updateModelStatus({
+            modelId,
+            status: status as OllamaModelDetails['status'],
+            progress
+          });
+        } else if (message.type === 'modelDetails') {
+          setSelectedModel(message.payload);
+          setViewMode('details');
+        } else if (message.type === 'parametersSaved') {
+          fetchModels();
+          setViewMode('details');
+        } else if (message.type === 'error') {
+          setError(message.payload.message);
+        }
+      } catch (err) {
+        console.error('Error processing WebSocket message:', err);
+        setError('Error processing server message');
       }
     },
     onConnect: () => {
       console.log('Connected to WebSocket server');
-      // Request initial model list
       sendMessage({ type: 'refreshModels' });
+      setError(null);
     },
     onDisconnect: () => {
       console.log('Disconnected from WebSocket server');
+      setError('Lost connection to server');
     },
   });
+
+  // Fetch models on mount and when connection status changes
+  useEffect(() => {
+    if (isConnected) {
+      fetchModels();
+    }
+  }, [isConnected]);
 
   // Update model status in the list
   const updateModelStatus = (update: { 
@@ -203,6 +213,24 @@ const ModelsPage: React.FC = () => {
       return (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64">
+          <div className="text-red-500 mb-4">{error}</div>
+          <button 
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              fetchModels();
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Retry
+          </button>
         </div>
       );
     }

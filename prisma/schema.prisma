@@ -42,7 +42,7 @@ model MCPServer {
 model OllamaModel {
   id          String   @id @default(cuid())
   name        String   @unique
-  size        Int
+  size        BigInt
   digest      String
   format      String
   family      String

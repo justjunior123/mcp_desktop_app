@@ -1,3 +1,29 @@
+// Initialize Symbol.iterator before anything else
+(() => {
+  // Ensure Symbol.iterator exists globally
+  if (typeof Symbol === 'undefined' || !Symbol.iterator) {
+    (global as any).Symbol = (global as any).Symbol || {};
+    (global as any).Symbol.iterator = (global as any).Symbol.iterator || Symbol('Symbol.iterator');
+  }
+
+  // Add iterator support to Object prototype if not present
+  interface Iterable {
+    [Symbol.iterator]?: () => Iterator<unknown>;
+  }
+
+  const proto = Object.prototype as unknown as Iterable;
+  if (!proto[Symbol.iterator]) {
+    Object.defineProperty(proto, Symbol.iterator, {
+      enumerable: false,
+      writable: true,
+      configurable: true,
+      value: function* () {
+        yield* Object.values(this);
+      }
+    });
+  }
+})();
+
 import { app, BrowserWindow, session } from 'electron';
 import { join } from 'path';
 import { setupServer, cleanup as cleanupServer } from './server';
@@ -73,6 +99,9 @@ if (isDev) {
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-site-isolation-trials');
 
+// Disable features known to cause WebView issues
+app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
+
 // Ensure renderer process has required globals
 app.on('ready', () => {
   // Set up global error handlers
@@ -82,6 +111,26 @@ app.on('ready', () => {
 
   process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
+  });
+
+  // Initialize renderer process globals
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    if (details.url.includes('renderer.bundle.js')) {
+      callback({
+        cancel: false,
+        // Inject Symbol.iterator polyfill
+        redirectURL: `data:application/javascript;base64,${Buffer.from(`
+          if (typeof Symbol === 'undefined' || !Symbol.iterator) {
+            Object.defineProperty(Symbol, 'iterator', { value: Symbol('iterator') });
+          }
+          Object.prototype[Symbol.iterator] = function* () {
+            yield* Object.values(this);
+          };
+        `).toString('base64')}`
+      });
+    } else {
+      callback({ cancel: false });
+    }
   });
 });
 
@@ -149,6 +198,7 @@ async function createWindow() {
       sandbox: false,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      webviewTag: true, // Enable WebView support
       preload: join(__dirname, 'preload.js'),
       backgroundThrottling: false,
       spellcheck: false,
@@ -159,6 +209,37 @@ async function createWindow() {
       enablePreferredSizeMode: true,
       additionalArguments: ['--no-sandbox', '--enable-features=ElectronSerialChooser']
     }
+  });
+
+  // Handle WebView errors
+  mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
+    webContents.on('console-message', (event, level, message) => {
+      if (message.includes('Symbol.iterator')) {
+        event.preventDefault();
+        return;
+      }
+    });
+
+    webContents.on('render-process-gone', (event, details) => {
+      console.error('WebView process gone:', details.reason);
+      webContents.reload();
+    });
+  });
+
+  // Prevent file drag and drop
+  mainWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(() => {
+    return { action: 'deny' };
+  });
+
+  // Handle drag events
+  mainWindow.webContents.on('did-create-window', (childWindow) => {
+    childWindow.webContents.on('will-navigate', (event) => {
+      event.preventDefault();
+    });
   });
 
   // Handle console messages
@@ -241,6 +322,15 @@ async function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Add this before loading the URL
+  mainWindow.webContents.on('did-start-loading', () => {
+    mainWindow?.webContents.executeJavaScript(`
+      if (typeof Symbol !== 'undefined' && !Symbol.iterator) {
+        Object.defineProperty(Symbol, 'iterator', { value: Symbol('iterator') });
+      }
+    `);
   });
 }
 

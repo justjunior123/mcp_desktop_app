@@ -1,27 +1,26 @@
+import { Prisma } from '@prisma/client';
+
 export interface OllamaModelInfo {
   name: string;
-  model: string;
-  modified_at: string;
   size: number;
   digest: string;
   details: {
-    parent_model?: string;
     format: string;
     family: string;
     families?: string[];
+    parameter_size?: string;
     quantization_level?: string;
     [key: string]: any;
   };
 }
 
 export interface OllamaModelData {
-  id?: string;
   name: string;
   size: number;
   digest: string;
-  format: string;
-  family: string;
-  parameters: Record<string, any>;
+  format?: string;
+  family?: string;
+  parameters?: Record<string, any>;
   isDownloaded?: boolean;
   downloadProgress?: number;
   status?: string;

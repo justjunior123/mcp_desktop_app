@@ -31,6 +31,18 @@ function cleanConfig(config: Record<string, any> | null | undefined): Record<str
   }, {} as Record<string, any>);
 }
 
+// Helper function to serialize BigInt values
+function serializeModel(model: any) {
+  return {
+    ...model,
+    size: model.size ? Number(model.size) : 0,
+    configuration: model.configuration ? {
+      ...model.configuration,
+      // Convert any other BigInt fields in configuration if needed
+    } : null
+  };
+}
+
 const router = Router();
 const ollamaClient = new OllamaClient();
 const modelManager = new OllamaModelManager(prisma, ollamaClient);
@@ -43,11 +55,18 @@ const listModels: RequestHandler = async (_req, res): Promise<void> => {
     
     // Get updated list
     const models = await modelManager.listModels();
-    res.json({ models });
+    if (!models) {
+      throw new Error('Failed to retrieve models');
+    }
+    
+    // Serialize models before sending response
+    const serializedModels = models.map(serializeModel);
+    res.json({ models: serializedModels });
   } catch (error) {
     console.error('Error listing models:', error);
     res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? error.stack : undefined
     });
   }
 };
@@ -60,7 +79,7 @@ const getModel: RequestHandler<ModelParams> = async (req, res): Promise<void> =>
       res.status(404).json({ error: 'Model not found' });
       return;
     }
-    res.json(model);
+    res.json(serializeModel(model));
   } catch (error) {
     console.error('Error getting model:', error);
     res.status(500).json({ 
@@ -207,11 +226,11 @@ const chatStream: RequestHandler<{}, any, ChatRequest> = async (req, res): Promi
 };
 
 // Register routes
-router.get('/', listModels);
-router.get('/:name', getModel);
-router.post('/:name/pull', pullModel);
-router.put('/:name/config', updateModelConfig);
-router.delete('/:name', deleteModel);
+router.get('/models', listModels);
+router.get('/models/:name', getModel);
+router.post('/models/:name/pull', pullModel);
+router.put('/models/:name/config', updateModelConfig);
+router.delete('/models/:name', deleteModel);
 router.post('/chat', chat);
 router.post('/chat/stream', chatStream);
 

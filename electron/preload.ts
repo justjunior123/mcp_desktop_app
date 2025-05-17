@@ -1,3 +1,61 @@
+// Initialize Symbol.iterator before anything else
+(() => {
+  // Ensure Symbol exists
+  if (typeof Symbol === 'undefined') {
+    (global as any).Symbol = function Symbol(description?: string | number) {
+      return `Symbol(${description})`;
+    };
+  }
+
+  // Ensure Symbol.iterator exists
+  if (!Symbol.iterator) {
+    Object.defineProperty(Symbol, 'iterator', {
+      value: Symbol('iterator'),
+      writable: false,
+      enumerable: false,
+      configurable: false
+    });
+  }
+
+  // Add iterator support to Object prototype if not present
+  interface Iterable<T = any> {
+    [Symbol.iterator]?: () => Iterator<T>;
+  }
+
+  const proto = Object.prototype as unknown as Iterable;
+  if (!proto[Symbol.iterator]) {
+    Object.defineProperty(proto, Symbol.iterator, {
+      enumerable: false,
+      writable: true,
+      configurable: true,
+      value: function* () {
+        yield* Object.values(this);
+      }
+    });
+  }
+
+  // Ensure these exist before Electron's renderer init
+  const globalObjects = [
+    typeof global !== 'undefined' ? global : null,
+    typeof window !== 'undefined' ? window : null,
+    typeof process !== 'undefined' ? process : null
+  ].filter(Boolean) as Array<Iterable>;
+
+  // Make all global objects iterable
+  globalObjects.forEach(obj => {
+    if (obj && !obj[Symbol.iterator]) {
+      Object.defineProperty(obj, Symbol.iterator, {
+        enumerable: false,
+        writable: true,
+        configurable: true,
+        value: function* () {
+          yield* Object.values(this);
+        }
+      });
+    }
+  });
+})();
+
 'use strict';
 
 // Suppress specific error messages
@@ -9,32 +67,6 @@ console.error = (...args: any[]) => {
     originalConsoleError.apply(console, args);
   }
 };
-
-// CRITICAL: Initialize Symbol.iterator before anything else
-(() => {
-  const ensureIterator = (obj: any) => {
-    if (obj && !obj[Symbol.iterator]) {
-      Object.defineProperty(obj, Symbol.iterator, {
-        enumerable: false,
-        configurable: true,
-        writable: true,
-        value: Array.prototype[Symbol.iterator]
-      });
-    }
-  };
-
-  // Ensure these exist before Electron's renderer init
-  ensureIterator(global);
-  ensureIterator(window);
-  
-  // Ensure basic iterables are available
-  const basicIterables = [Array, String, Map, Set];
-  basicIterables.forEach(type => {
-    if (type && type.prototype) {
-      ensureIterator(type.prototype);
-    }
-  });
-})();
 
 import { contextBridge, ipcRenderer } from 'electron';
 
@@ -94,26 +126,53 @@ win.console.warn = (...args: any[]) => {
   }
 };
 
+// Add type declaration for drag events
+declare global {
+  interface Window {
+    dragEvent?: DragEvent;
+  }
+}
+
+// Initialize drag event handling
+if (typeof window !== 'undefined') {
+  window.addEventListener('dragover', (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dragEvent = e;
+  }, false);
+
+  window.addEventListener('drop', (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dragEvent = e;
+  }, false);
+
+  window.addEventListener('dragleave', (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dragEvent = undefined;
+  }, false);
+}
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld(
-  'electron',
-  {
-    send: (channel: string, data: any) => {
-      // whitelist channels
-      const validChannels = ['toMain'];
-      if (validChannels.includes(channel)) {
-        ipcRenderer.send(channel, data);
-      }
-    },
-    receive: (channel: string, func: Function) => {
-      const validChannels = ['fromMain'];
-      if (validChannels.includes(channel)) {
-        // Deliberately strip event as it includes `sender` 
-        ipcRenderer.on(channel, (event, ...args) => func(...args));
-      }
-    },
-    // Add development-specific APIs
-    isDev: process.env.NODE_ENV === 'development'
+const api = {
+  send: (channel: string, data: any) => {
+    ipcRenderer.send(channel, data);
+  },
+  receive: (channel: string, func: Function) => {
+    ipcRenderer.on(channel, (event, ...args) => func(...args));
   }
-); 
+} as const;
+
+// Add iterator support
+Object.defineProperty(api, Symbol.iterator, {
+  enumerable: false,
+  writable: true,
+  configurable: true,
+  value: function* () {
+    yield* Object.entries(this);
+  }
+});
+
+contextBridge.exposeInMainWorld('api', api); 
