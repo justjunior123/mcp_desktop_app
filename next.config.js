@@ -9,26 +9,45 @@ const nextConfig = {
     unoptimized: process.env.NODE_ENV === 'development'
   },
   serverExternalPackages: ['electron'],
-  experimental: {
-    turbo: {
-      resolveAlias: {
-        // TypeScript extensions
-        '.ts': '.js',
-        '.tsx': '.jsx',
-        // Node polyfills
-        'crypto': 'crypto-browserify',
-        'stream': 'stream-browserify',
-        'url': 'url/',
-        'zlib': 'browserify-zlib',
-        'http': 'stream-http',
-        'https': 'https-browserify',
-        'assert': 'assert',
-        'os': 'os-browserify/browser',
-        'path': 'path-browserify',
-        'process': 'process/browser',
-        'buffer': 'buffer'
-      }
+  turbopack: {}, // Enable Turbopack with empty object configuration
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Add fallback configurations for necessary Node modules
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: require.resolve('crypto-browserify'),
+        stream: require.resolve('stream-browserify'),
+        url: require.resolve('url/'),
+        zlib: require.resolve('browserify-zlib'),
+        http: require.resolve('stream-http'),
+        https: require.resolve('https-browserify'),
+        assert: require.resolve('assert/'),
+        os: require.resolve('os-browserify/browser'),
+        path: require.resolve('path-browserify'),
+        process: require.resolve('process/browser'),
+        buffer: require.resolve('buffer/')
+      };
+
+      // Configure for Electron renderer
+      config.target = 'electron-renderer';
+
+      // Add process and Buffer polyfills
+      config.plugins.push(
+        new webpack.ProvidePlugin({
+          process: 'process/browser',
+          Buffer: ['buffer', 'Buffer']
+        }),
+        new webpack.DefinePlugin({
+          'global': 'globalThis',
+          'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+          'process.env.ELECTRON_HMR': JSON.stringify(true)
+        })
+      );
     }
+    return config;
   },
   // Security headers
   async headers() {
