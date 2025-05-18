@@ -75,7 +75,10 @@ const nextConfig = {
     ];
   },
   compress: process.env.NODE_ENV === 'production',
-  poweredByHeader: false
+  poweredByHeader: false,
+  experimental: {
+    allowedDevOrigins: ['https://replit.com/@justjunior123/mcpdesktopapp'],
+  },
 };
 
 module.exports = nextConfig; 
