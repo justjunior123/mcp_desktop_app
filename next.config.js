@@ -9,10 +9,8 @@ const nextConfig = {
     unoptimized: process.env.NODE_ENV === 'development'
   },
   turbopack: {
-    loaders: {
-      // Configure loaders for Electron
-      '.js': 'jsx',
-      '.ts': 'tsx'
+    experimental: {
+      allowedDevOrigins: [".repl.it"]
     }
   },
   webpack: (config, { isServer, dev }) => {
