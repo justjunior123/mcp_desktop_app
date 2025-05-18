@@ -10,7 +10,6 @@ const nextConfig = {
   },
   serverExternalPackages: ['electron'],
   turbopack: {
-    root: path.join(__dirname), // Set root to current directory
     resolveExtensions: ['.tsx', '.ts', '.jsx', '.js', '.json'], // Add common extensions
   },
   webpack: (config, { isServer }) => {
@@ -76,9 +75,6 @@ const nextConfig = {
   },
   compress: process.env.NODE_ENV === 'production',
   poweredByHeader: false,
-  experimental: {
-    allowedDevOrigins: ['https://replit.com/@justjunior123/mcpdesktopapp'],
-  },
 };
 
 module.exports = nextConfig; 
