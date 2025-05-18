@@ -9,7 +9,10 @@ const nextConfig = {
     unoptimized: process.env.NODE_ENV === 'development'
   },
   serverExternalPackages: ['electron'],
-  turbopack: {}, // Enable Turbopack with empty object configuration
+  turbopack: {
+    root: path.join(__dirname), // Set root to current directory
+    resolveExtensions: ['.tsx', '.ts', '.jsx', '.js', '.json'], // Add common extensions
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // Add fallback configurations for necessary Node modules
