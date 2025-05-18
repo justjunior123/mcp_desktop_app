@@ -8,15 +8,12 @@ const nextConfig = {
     domains: ['i.pravatar.cc'],
     unoptimized: process.env.NODE_ENV === 'development'
   },
+  serverExternalPackages: ['electron'],
   turbopack: {
     experimental: {
-      allowedDevOrigins: [".repl.it"]
-    }
-  },
-  webpack: (config, { isServer, dev }) => {
-    if (!isServer) {
-      // Client-side polyfills and fallbacks
-      config.resolve.fallback = {
+      allowedDevOrigins: [".repl.it"],
+      resolveAlias: {
+        // Client-side polyfills and fallbacks
         fs: false,
         net: false,
         tls: false,
@@ -30,37 +27,19 @@ const nextConfig = {
         os: require.resolve('os-browserify/browser'),
         path: require.resolve('path-browserify'),
         process: require.resolve('process/browser'),
-        buffer: require.resolve('buffer/')
-      };
-
+        buffer: require.resolve('buffer/'),
+        '.ts': '.js',
+        '.tsx': '.jsx'
+      },
       // Configure for Electron renderer
-      config.target = 'electron-renderer';
-
-      // Add process and Buffer polyfills
-      config.plugins.push(
-        new webpack.ProvidePlugin({
-          process: 'process/browser',
-          Buffer: ['buffer', 'Buffer']
-        })
-      );
-
-      if (dev) {
-        // Development specific configuration
-        config.optimization = {
-          minimize: false
-        };
-
-        config.plugins.push(
-          new webpack.DefinePlugin({
-            'global': 'globalThis',
-            'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-            'process.env.ELECTRON_HMR': JSON.stringify(true)
-          })
-        );
+      target: 'electron-renderer',
+      // Process and Buffer polyfills
+      defines: {
+        'global': 'globalThis',
+        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+        'process.env.ELECTRON_HMR': JSON.stringify(true)
       }
     }
-
-    return config;
   },
   // Security headers
   async headers() {
