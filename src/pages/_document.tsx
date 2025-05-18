@@ -1,43 +1,49 @@
+// @ts-ignore: Next.js types
+// eslint-disable-next-line import/no-unresolved
 import { Html, Head, Main, NextScript } from 'next/document';
 
 export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        <script dangerouslySetInnerHTML={{
+        {/* Stub webpack module loader to prevent HMR crashes */}
+        <script
+          dangerouslySetInnerHTML={{
             __html: `
-            if (typeof Symbol === 'undefined' || !Symbol.iterator) {
-              Object.defineProperty(window, 'Symbol', {
-                value: function Symbol(description) {
-                  return 'Symbol(' + description + ')';
-                },
-                writable: true,
-                enumerable: false,
-                configurable: true
-              });
-              
-              Object.defineProperty(Symbol, 'iterator', {
-                value: Symbol('iterator'),
-                writable: false,
-                enumerable: false,
-                configurable: false
-              });
-
-              if (!Object.prototype[Symbol.iterator]) {
-                Object.defineProperty(Object.prototype, Symbol.iterator, {
-                  value: function* () {
-                    for (const key of Object.keys(this)) {
-                      yield this[key];
-                    }
-                  },
-                  writable: true,
+              // No-op webpack require function to satisfy HMR runtime
+              window.__webpack_require__ = function() {};
+              // Dummy require to avoid errors
+              window.require = function(moduleId) { return {}; };
+            `,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Ensure Symbol exists and iterator
+              if (typeof Symbol === 'undefined') {
+                window.Symbol = function Symbol(description) { return 'Symbol(' + description + ')'; };
+              }
+              if (!Symbol.iterator) {
+                Object.defineProperty(Symbol, 'iterator', {
+                  value: Symbol('iterator'),
+                  writable: false,
                   enumerable: false,
-                  configurable: true
+                  configurable: false
                 });
               }
-              }
-          `
-        }} />
+              // Polyfill global and process for HMR
+              window.global = window;
+              window.process = window.process || { env: { NODE_ENV: (window.process && window.process.env && window.process.env.NODE_ENV) || 'development', ELECTRON_HMR: true }, browser: true };
+              // Stub HMR update hook
+              Object.defineProperty(window, 'webpackHotUpdate_N_E', {
+                configurable: true,
+                writable: true,
+                value: undefined
+              });
+            `,
+          }}
+        />
       </Head>
       <body>
         <Main />
@@ -45,4 +51,4 @@ export default function Document() {
       </body>
     </Html>
   );
-} 
+}

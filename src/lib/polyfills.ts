@@ -1,3 +1,6 @@
+// Add static Buffer import
+import { Buffer } from 'buffer';
+
 // Initialize required globals
 (() => {
   // Ensure Symbol exists
@@ -60,8 +63,8 @@
   }
 
   // Ensure Buffer is available
-  if (typeof Buffer === 'undefined') {
-    globalObj.Buffer = require('buffer').Buffer;
+  if (typeof globalObj.Buffer === 'undefined') {
+    globalObj.Buffer = Buffer;
   }
 
   // Make object extensible for HMR
