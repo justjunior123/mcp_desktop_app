@@ -62,5 +62,11 @@ next-env.d.ts
 ehthumbs.db
 Thumbs.db
 
+# Tailwind CSS
+tailwindcss-*.log
+
 # Project specific
 /PROJECT_DOCS
+# Ignore SQLite database files
+*.db
+*.db-journal
