@@ -16,17 +16,17 @@ const nextConfig = {
         '.ts': '.js',
         '.tsx': '.jsx',
         // Node polyfills
-        'crypto': require.resolve('crypto-browserify'),
-        'stream': require.resolve('stream-browserify'),
-        'url': require.resolve('url/'),
-        'zlib': require.resolve('browserify-zlib'),
-        'http': require.resolve('stream-http'),
-        'https': require.resolve('https-browserify'),
-        'assert': require.resolve('assert/'),
-        'os': require.resolve('os-browserify/browser'),
-        'path': require.resolve('path-browserify'),
-        'process': require.resolve('process/browser'),
-        'buffer': require.resolve('buffer/')
+        'crypto': 'crypto-browserify',
+        'stream': 'stream-browserify',
+        'url': 'url/',
+        'zlib': 'browserify-zlib',
+        'http': 'stream-http',
+        'https': 'https-browserify',
+        'assert': 'assert',
+        'os': 'os-browserify/browser',
+        'path': 'path-browserify',
+        'process': 'process/browser',
+        'buffer': 'buffer'
       }
     }
   },
