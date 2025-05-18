@@ -1,5 +1,3 @@
-import { Prisma } from '@prisma/client';
-
 export interface OllamaModelInfo {
   name: string;
   size: bigint;
@@ -93,4 +91,23 @@ export interface OllamaEmbeddingRequest {
 
 export interface OllamaEmbeddingResponse {
   embedding: number[];
+}
+
+export interface OllamaModelDetails extends OllamaModelInfo {
+  id: string;
+  status: 'AVAILABLE' | 'DOWNLOADING' | 'ERROR' | 'NOT_DOWNLOADED';
+  downloadProgress?: number;
+  error?: string | null;
+  configuration?: {
+    temperature?: number;
+    topP?: number;
+    topK?: number;
+    repeatPenalty?: number;
+    presencePenalty?: number;
+    frequencyPenalty?: number;
+    stop?: string[];
+    maxTokens?: number;
+    systemPrompt?: string;
+    contextWindow?: number;
+  };
 } 

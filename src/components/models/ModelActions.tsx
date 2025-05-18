@@ -1,5 +1,5 @@
 import React from 'react';
-import { OllamaModelDetails } from '../../services/ollama/ModelManager';
+import type { OllamaModelDetails } from '@services/ollama/types.ts';
 
 interface ModelActionsProps {
   model: OllamaModelDetails;
