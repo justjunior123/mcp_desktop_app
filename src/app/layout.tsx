@@ -1,6 +1,6 @@
 import React from 'react';
 import { MainLayout } from '../components/layout/MainLayout.tsx';
-import './globals.css';
+import '@/styles/globals.css';
 
 export const metadata = {
   title: 'MCP Desktop',

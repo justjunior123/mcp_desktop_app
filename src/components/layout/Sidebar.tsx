@@ -21,7 +21,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ navItems = defaultNavItems }) 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 p-4">
       <div className="mb-8">
-        <img src="/logo.png" alt="Logo" className="h-8" />
+        <img src="/logo.svg" alt="MCP Logo" className="h-8 w-auto" />
       </div>
       <nav className="space-y-1">
         {navItems.map((item) => (

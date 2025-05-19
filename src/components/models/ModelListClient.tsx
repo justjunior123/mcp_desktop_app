@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ModelList } from './ModelList.tsx';
 import type { OllamaModelDetails } from '../../services/ollama/ModelManager.ts';
 import { getApiUrl } from '../../config/api.ts';
@@ -13,7 +13,7 @@ export const ModelListClient: React.FC<ModelListClientProps> = ({ initialModels 
   const [models, setModels] = useState<OllamaModelDetails[]>(initialModels);
   const [loading, setLoading] = useState(false);
 
-  const fetchModels = async () => {
+  const handleRefresh = async () => {
     setLoading(true);
     try {
       const res = await fetch(getApiUrl('models'));
@@ -27,16 +27,12 @@ export const ModelListClient: React.FC<ModelListClientProps> = ({ initialModels 
     }
   };
 
-  useEffect(() => {
-    fetchModels();
-  }, []);
-
   return (
     <>
       <button
-        onClick={fetchModels}
+        onClick={handleRefresh}
         disabled={loading}
-        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded"
+        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
       >
         {loading ? 'Loading...' : 'Refresh Models'}
       </button>
