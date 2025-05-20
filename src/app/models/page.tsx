@@ -7,7 +7,7 @@ async function getModels() {
   if (!res.ok) throw new Error(res.statusText);
   const data: { models: OllamaModelDetails[] } = await res.json();
   return data.models;
-}
+    }
 
 export default async function ModelsPage() {
   const initialModels = await getModels();
