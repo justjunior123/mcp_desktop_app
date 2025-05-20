@@ -1,12 +1,11 @@
-import ModelsPage from './models/page.tsx';
+import { MainLayout } from '@/components/layout/MainLayout';
 
-export default async function Home() {
+export default function Home() {
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-4xl font-bold mb-8">MCP Desktop</h1>
-      <p className="text-xl mb-8">Manage your local LLMs and MCP servers</p>
-      {/* @ts-expect-error Async Server Component */}
-      <ModelsPage />
-    </main>
+    <MainLayout>
+      <main className="flex min-h-screen flex-col items-center justify-between p-24">
+        <h1>Welcome to MCP Desktop App</h1>
+      </main>
+    </MainLayout>
   );
 } 

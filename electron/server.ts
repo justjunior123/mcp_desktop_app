@@ -1,16 +1,18 @@
 import express from 'express';
 import { Server as HttpServer } from 'http';
 import cors from 'cors';
-import WebSocket from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
+import { IncomingMessage } from 'http';
 import ollamaRouter from '../src/api/routes/ollama';
 import { WebSocketMessageUnion } from '../src/types/websocket';
 import { OllamaModelManager } from '../src/services/ollama/model-manager';
 import { prisma } from '../src/services/database/client';
 import { OllamaClient } from '../src/services/ollama/client';
+import { RawData } from 'ws';
 
 let server: HttpServer | null = null;
-let wss: WebSocket.Server | null = null;
-const API_PORT = process.env.API_PORT || 3100;
+let wss: WebSocketServer | null = null;
+const API_PORT = parseInt(process.env.API_PORT || '3100', 10);
 const API_HOST = process.env.API_HOST || '0.0.0.0';
 
 // Allow list of origins - can be configured via environment variables
@@ -86,7 +88,7 @@ export async function setupServer() {
         console.log(`API Server running on ${API_HOST}:${API_PORT}`);
 
         // Set up WebSocket server with external access support
-        wss = new WebSocket.Server({ 
+        wss = new WebSocketServer({ 
           server: server as HttpServer,
           // Add WebSocket specific configurations
           perMessageDeflate: {
@@ -106,7 +108,7 @@ export async function setupServer() {
           }
         });
 
-        wss.on('connection', (ws, req) => {
+        wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
           const clientIp = req.socket.remoteAddress;
           console.log(`WebSocket client connected from ${clientIp}`);
 
@@ -117,7 +119,7 @@ export async function setupServer() {
             }
           }, 30000);
 
-          ws.on('message', async (message) => {
+          ws.on('message', async (message: RawData) => {
             try {
               const data = JSON.parse(message.toString()) as WebSocketMessageUnion;
               
