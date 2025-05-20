@@ -2,8 +2,7 @@ const { exec } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { promisify } = require('util');
-const rimraf = promisify(require('rimraf'));
+const { rimraf } = require('rimraf');
 
 const ports = [3002, 3100, 5555]; // Next.js, API, and Prisma Studio ports
 const platform = os.platform();
