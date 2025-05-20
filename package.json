@@ -13,7 +13,7 @@
     "start": "next start -p 3002",
     "lint": "next lint",
     "kill-ports": "node scripts/cleanup.js",
-    "clean": "rimraf .next out dist",
+    "clean": "rimraf .next out dist tsconfig.tsbuildinfo electron/dist/electron/tsconfig.tsbuildinfo",
     "build:all": "npm run clean && next build && tsc -p electron/tsconfig.json && electron-builder",
     "db:setup": "prisma generate && prisma migrate deploy",
     "prisma:studio": "dotenv -e .env prisma studio",
