@@ -11,24 +11,61 @@ import { OllamaClient } from '../src/services/ollama/client';
 let server: HttpServer | null = null;
 let wss: WebSocket.Server | null = null;
 const API_PORT = process.env.API_PORT || 3100;
+const API_HOST = process.env.API_HOST || '0.0.0.0';
+
+// Allow list of origins - can be configured via environment variables
+const ALLOWED_ORIGINS = [
+  'http://localhost:3002',
+  'app://rse',
+  'ws://localhost:3100',
+  // Add Replit domains
+  'https://*.repl.co',
+  'https://*.repl.it',
+  'https://*.replit.com',
+  // Development and production URLs
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.REPLIT_URL,
+].filter(Boolean); // Remove undefined values
 
 export async function setupServer() {
   const app = express();
   const ollamaClient = new OllamaClient();
   const modelManager = new OllamaModelManager(prisma, ollamaClient);
 
-  // Basic middleware
+  // Enhanced middleware
   app.use(express.json());
   app.use(cors({
-    origin: ['http://localhost:3002', 'app://rse', 'ws://localhost:3100'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if the origin is allowed
+      const isAllowed = ALLOWED_ORIGINS.some(allowedOrigin => {
+        if (allowedOrigin?.includes('*')) {
+          const pattern = new RegExp(allowedOrigin.replace('*', '.*'));
+          return pattern.test(origin);
+        }
+        return allowedOrigin === origin;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   }));
 
   // Basic health check endpoint
   app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
+    res.json({ 
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV
+    });
   });
 
   // Check Ollama health before adding routes
@@ -45,14 +82,40 @@ export async function setupServer() {
   // Start the server
   return new Promise<HttpServer>((resolve, reject) => {
     try {
-      server = app.listen(API_PORT, () => {
-        console.log(`API Server running on port ${API_PORT}`);
+      server = app.listen(API_PORT, API_HOST, () => {
+        console.log(`API Server running on ${API_HOST}:${API_PORT}`);
 
-        // Set up WebSocket server
-        wss = new WebSocket.Server({ server: server as HttpServer });
+        // Set up WebSocket server with external access support
+        wss = new WebSocket.Server({ 
+          server: server as HttpServer,
+          // Add WebSocket specific configurations
+          perMessageDeflate: {
+            zlibDeflateOptions: {
+              chunkSize: 1024,
+              memLevel: 7,
+              level: 3
+            },
+            zlibInflateOptions: {
+              chunkSize: 10 * 1024
+            },
+            clientNoContextTakeover: true,
+            serverNoContextTakeover: true,
+            serverMaxWindowBits: 10,
+            concurrencyLimit: 10,
+            threshold: 1024
+          }
+        });
 
-        wss.on('connection', (ws) => {
-          console.log('WebSocket client connected');
+        wss.on('connection', (ws, req) => {
+          const clientIp = req.socket.remoteAddress;
+          console.log(`WebSocket client connected from ${clientIp}`);
+
+          // Keep connection alive
+          const pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.ping();
+            }
+          }, 30000);
 
           ws.on('message', async (message) => {
             try {
@@ -91,11 +154,22 @@ export async function setupServer() {
           });
 
           ws.on('close', () => {
-            console.log('WebSocket client disconnected');
+            clearInterval(pingInterval);
+            console.log(`WebSocket client disconnected from ${clientIp}`);
+          });
+
+          ws.on('error', (error) => {
+            console.error(`WebSocket error from ${clientIp}:`, error);
+            clearInterval(pingInterval);
           });
         });
 
         resolve(server as HttpServer);
+      });
+
+      // Add error handler for the server
+      server.on('error', (error) => {
+        console.error('Server error:', error);
       });
     } catch (err) {
       reject(err);

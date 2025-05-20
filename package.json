@@ -7,7 +7,7 @@
   "main": "dist/electron/electron/main.js",
   "scripts": {
     "dev": "npm run clean && npm run kill-ports && npm run db:setup && concurrently \"npm run dev:next\" \"npm run dev:electron\" \"npm run prisma:studio\"",
-    "dev:next": "next dev --turbo -p 3002 --host 0.0.0.0",
+    "dev:next": "next dev --turbo -p 3002",
     "dev:electron": "tsc -p electron/tsconfig.json && cross-env NODE_ENV=development ELECTRON_HMR=true electron .",
     "build": "next build && tsc -p electron/tsconfig.json",
     "start": "next start -p 3002",
