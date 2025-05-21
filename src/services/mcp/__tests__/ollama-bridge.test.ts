@@ -7,7 +7,6 @@ import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals
 
 // Mock the required modules
 jest.mock('../../ollama/client');
-jest.mock('@modelcontextprotocol/sdk');
 
 describe('OllamaBridge', () => {
   let ollamaClient: jest.Mocked<OllamaClient>;

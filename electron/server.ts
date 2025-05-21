@@ -3,12 +3,12 @@ import { Server as HttpServer } from 'http';
 import cors from 'cors';
 import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
-import ollamaRouter from '../src/api/routes/ollama';
+import { RawData } from 'ws';
+import mcpRouter from '../src/api/routes/mcp';
 import { WebSocketMessageUnion } from '../src/types/websocket';
 import { OllamaModelManager } from '../src/services/ollama/model-manager';
 import { prisma } from '../src/services/database/client';
 import { OllamaClient } from '../src/services/ollama/client';
-import { RawData } from 'ws';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
@@ -29,7 +29,30 @@ const ALLOWED_ORIGINS = [
   process.env.REPLIT_URL,
 ].filter(Boolean); // Remove undefined values
 
+// Error handling middleware
+const errorHandler = (err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({
+    error: {
+      code: 'INTERNAL_ERROR',
+      message: err.message || 'An unexpected error occurred'
+    }
+  });
+};
+
+// Not found middleware
+const notFoundHandler = (req: express.Request, res: express.Response) => {
+  res.status(404).json({
+    error: {
+      code: 'NOT_FOUND',
+      message: `Resource not found: ${req.method} ${req.path}`
+    }
+  });
+};
+
 export async function setupServer() {
+  const fs = require('fs');
+  fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] setupServer: called\n`);
   const app = express();
   const ollamaClient = new OllamaClient();
   const modelManager = new OllamaModelManager(prisma, ollamaClient);
@@ -78,14 +101,20 @@ export async function setupServer() {
     console.log('✅ Ollama server is healthy');
   }
 
-  // Add Ollama routes
-  app.use('/api/ollama', ollamaRouter);
+  // Add MCP routes
+  app.use('/api', mcpRouter);
+
+  // Add error handling middleware
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   // Start the server
   return new Promise<HttpServer>((resolve, reject) => {
     try {
       server = app.listen(API_PORT, API_HOST, () => {
         console.log(`API Server running on ${API_HOST}:${API_PORT}`);
+        const fs = require('fs');
+        fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] server.ts: API Server running on ${API_HOST}:${API_PORT}\n`);
 
         // Set up WebSocket server with external access support
         wss = new WebSocketServer({ 
@@ -130,6 +159,7 @@ export async function setupServer() {
                   ws.send(JSON.stringify({
                     type: 'error',
                     payload: {
+                      code: 'SERVICE_UNAVAILABLE',
                       message: 'Ollama server is not available'
                     }
                   }));
@@ -141,7 +171,7 @@ export async function setupServer() {
                 const models = await modelManager.listModels();
                 ws.send(JSON.stringify({
                   type: 'initialStatus',
-                  payload: { models }
+                  payload: { data: models }
                 }));
               }
             } catch (error) {
@@ -149,6 +179,7 @@ export async function setupServer() {
               ws.send(JSON.stringify({
                 type: 'error',
                 payload: {
+                  code: 'INTERNAL_ERROR',
                   message: error instanceof Error ? error.message : 'Unknown error'
                 }
               }));
@@ -172,8 +203,14 @@ export async function setupServer() {
       // Add error handler for the server
       server.on('error', (error) => {
         console.error('Server error:', error);
+        const fs = require('fs');
+        const errorMsg = (error instanceof Error) ? error.message : String(error);
+        fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] server.ts: Server error: ${errorMsg}\n`);
       });
     } catch (err) {
+      const fs = require('fs');
+      const errorMsg = (err instanceof Error) ? err.message : String(err);
+      fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] setupServer: Caught error: ${errorMsg}\n`);
       reject(err);
     }
   });

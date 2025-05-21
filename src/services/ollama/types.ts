@@ -8,6 +8,13 @@ export interface OllamaModelInfo {
   parameter_size?: string;
   quantization_level?: string;
   parent_model?: string;
+  architecture?: string;
+  context_length?: number;
+  embedding_length?: number;
+  quantization?: string;
+  capabilities?: string[];
+  stop?: string[];
+  license?: string;
   [key: string]: any;
 }
 
@@ -17,7 +24,22 @@ export interface OllamaModelData {
   digest: string;
   format?: string;
   family?: string;
-  parameters?: Record<string, any>;
+  parameters?: {
+    architecture?: string;
+    parameter_size?: string;
+    context_length?: number;
+    embedding_length?: number;
+    quantization?: string;
+    capabilities?: string[];
+    stop_sequences?: string[];
+    families?: string[];
+    quantization_level?: string;
+    parent_model?: string;
+    format?: string;
+    family?: string;
+    license?: string;
+    [key: string]: any;
+  };
   isDownloaded?: boolean;
   downloadProgress?: number;
   status?: string;

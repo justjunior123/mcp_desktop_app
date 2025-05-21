@@ -54,7 +54,15 @@ export class OllamaClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const logPrefix = `[OllamaClient] ${endpoint}`;
     try {
+      const reqBody = options.body ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)) : undefined;
+      const truncatedBody = reqBody && reqBody.length > 500 ? reqBody.slice(0, 500) + '...[truncated]' : reqBody;
+      console.log(`${logPrefix} REQUEST:`, {
+        method: options.method || 'GET',
+        body: truncatedBody
+      });
+
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers: {
@@ -63,27 +71,87 @@ export class OllamaClient {
         },
       });
 
+      const text = await response.text();
+      
+      // Log the full response for debugging
+      console.log(`${logPrefix} RAW RESPONSE:`, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: text.length > 1000 ? text.slice(0, 1000) + '...[truncated]' : text
+      });
+
+      // Handle empty responses
+      if (!text.trim()) {
+        if (response.ok) {
+          // For successful empty responses (like 204 No Content), return empty object
+          return {} as T;
+        }
+        throw new OllamaError(`Empty response with status ${response.status}`, response.status);
+      }
+
       if (!response.ok) {
+        // Try to parse error details if possible
+        try {
+          const errJson = JSON.parse(text);
+          if (errJson && errJson.error) {
+            throw new OllamaError(`HTTP error ${response.status}: ${errJson.error}`, response.status);
+          }
+        } catch (error) {
+          // If we can't parse the error as JSON, include the raw text in the error
+          const errorMessage = error instanceof Error ? error.message : 'Unknown parse error';
+          throw new OllamaError(
+            `HTTP error ${response.status}: ${text.length > 100 ? text.slice(0, 100) + '...' : text} (${errorMessage})`,
+            response.status
+          );
+        }
         throw new OllamaError(`HTTP error ${response.status}`, response.status);
       }
 
-      const text = await response.text();
-      console.log('Raw API response:', text); // Debug logging
-      
+      let data: any;
       try {
-        return JSON.parse(text) as T;
+        data = JSON.parse(text);
       } catch (parseError) {
-        console.error('Error parsing JSON response:', text);
-        throw new OllamaError('Invalid JSON response from server');
+        // Log the parse error with more context
+        console.error(`${logPrefix} JSON PARSE ERROR:`, {
+          error: parseError,
+          responseText: text.length > 1000 ? text.slice(0, 1000) + '...[truncated]' : text,
+          endpoint,
+          status: response.status
+        });
+        throw new OllamaError(
+          `Invalid JSON response from server (${endpoint}): ${parseError.message}`,
+          response.status
+        );
       }
+
+      // If the response contains an error field, treat as error
+      if (data && typeof data === 'object' && data.error) {
+        console.error(`${logPrefix} API ERROR:`, {
+          error: data.error,
+          endpoint,
+          status: response.status
+        });
+        throw new OllamaError(data.error, response.status);
+      }
+
+      return data as T;
     } catch (error) {
+      // Enhance error logging with more context
+      console.error(`${logPrefix} ERROR:`, {
+        error,
+        endpoint,
+        method: options.method || 'GET',
+        requestBody: options.body ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)) : undefined
+      });
+      
       if (error instanceof OllamaError) {
         throw error;
       }
       if (error instanceof Error) {
-        throw new OllamaError(error.message);
+        throw new OllamaError(`${error.message} (${endpoint})`);
       }
-      throw new OllamaError('Unknown error occurred');
+      throw new OllamaError(`Unknown error occurred (${endpoint})`);
     }
   }
 
@@ -120,10 +188,52 @@ export class OllamaClient {
   }
 
   async pullModel(name: string): Promise<void> {
-    await this.request('/api/pull', {
+    const response = await fetch(`${this.baseUrl}/api/pull`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ name }),
     });
+
+    if (!response.ok) {
+      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+    }
+
+    if (!response.body) {
+      throw new OllamaError('No response body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(Boolean);
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            // Log progress updates
+            if (data.status) {
+              console.log(`[OllamaClient] Pull progress: ${data.status}`);
+            }
+            // If we get a final success message, we're done
+            if (data.status === 'success') {
+              return;
+            }
+          } catch (parseError) {
+            console.warn(`[OllamaClient] Failed to parse pull response line: ${line}`);
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   async generate(request: OllamaGenerateRequest): Promise<OllamaGenerateResponse> {
