@@ -199,8 +199,26 @@ export class OllamaModelManager {
         where: { name },
         include: { configuration: true }
       });
-      prodLog('info', 'getModel: success', { found: !!model });
-      return model;
+      
+      if (!model) {
+        throw new Error('Model not found');
+      }
+
+      // Transform the model into the expected format
+      const transformedModel = {
+        name: model.name,
+        size: model.size,
+        digest: model.digest,
+        format: model.format,
+        family: model.family,
+        details: model.parameters || {},
+        status: model.status,
+        error: model.error,
+        configuration: model.configuration
+      };
+
+      prodLog('info', 'getModel: success', { found: true });
+      return transformedModel;
     } catch (error) {
       prodLog('error', 'getModel: error', { error: error instanceof Error ? error.stack || error.message : error });
       throw error;
@@ -213,8 +231,22 @@ export class OllamaModelManager {
       const models = await this.prisma.ollamaModel.findMany({
         include: { configuration: true }
       });
+
+      // Transform the models into the expected format
+      const transformedModels = models.map((model: any) => ({
+        name: model.name,
+        size: model.size,
+        digest: model.digest,
+        format: model.format,
+        family: model.family,
+        details: model.parameters || {},
+        status: model.status,
+        error: model.error,
+        configuration: model.configuration
+      }));
+
       prodLog('info', 'listModels: success', { count: models.length });
-      return models;
+      return transformedModels;
     } catch (error) {
       prodLog('error', 'listModels: error', { error: error instanceof Error ? error.stack || error.message : error });
       throw error;
@@ -299,7 +331,11 @@ export class OllamaModelManager {
       const sanitizedModelInfo = sanitizeModelData(modelInfo);
       prodLog('info', 'pullModel: updating database with model info');
       await this.upsertModel(sanitizedModelInfo);
+
+      // Return the transformed model
+      const model = await this.getModel(name);
       prodLog('info', 'pullModel: success', { name });
+      return model;
     } catch (error) {
       prodLog('error', 'pullModel: operation failed', { 
         error: error instanceof Error ? error.stack || error.message : error,
@@ -326,7 +362,7 @@ export class OllamaModelManager {
     }
   }
 
-  async updateModelConfiguration(name: string, config: {
+  async updateModel(name: string, config: {
     temperature?: number;
     topP?: number;
     topK?: number;
@@ -338,16 +374,16 @@ export class OllamaModelManager {
     systemPrompt?: string;
     contextWindow?: number;
   }) {
-    prodLog('info', 'updateModelConfiguration: entry', { name, config });
+    prodLog('info', 'updateModel: entry', { name, config });
     const model = await this.prisma.ollamaModel.findUnique({
       where: { name }
     });
 
     if (!model) {
-      throw new Error(`Model ${name} not found`);
+      throw new Error('Model not found');
     }
 
-    return this.prisma.ollamaModelConfiguration.upsert({
+    const updatedConfig = await this.prisma.ollamaModelConfiguration.upsert({
       where: { modelId: model.id },
       create: {
         modelId: model.id,
@@ -355,6 +391,9 @@ export class OllamaModelManager {
       },
       update: config
     });
+
+    // Return the updated model
+    return this.getModel(name);
   }
 
   async deleteModel(name: string) {

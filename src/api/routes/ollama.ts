@@ -121,7 +121,7 @@ const pullModel: RequestHandler<ModelParams> = async (req, res): Promise<void> =
 // Update model configuration
 const updateModelConfig: RequestHandler<ModelParams> = async (req, res): Promise<void> => {
   try {
-    const config = await modelManager.updateModelConfiguration(
+    const config = await modelManager.updateModel(
       req.params.name,
       req.body
     );

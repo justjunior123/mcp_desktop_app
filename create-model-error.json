@@ -1,6 +1,6 @@
 {
   "error": {
     "code": "INTERNAL_ERROR",
-    "message": "TypeError: fetch failed"
+    "message": "Failed to create model"
   }
 }

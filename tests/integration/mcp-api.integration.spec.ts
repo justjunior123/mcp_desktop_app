@@ -1,22 +1,15 @@
 import request from 'supertest';
 import { setupServer, cleanup } from '../../electron/server';
-import { prisma } from '../../src/services/database/client';
-import { OllamaClient } from '../../src/services/ollama/client';
-import { OllamaModelInfo } from '../../src/services/ollama/types';
+import { prisma, mockOllamaClient } from '../setup';
 import fs from 'fs';
 import path from 'path';
 
 describe('MCP API Integration Tests', () => {
   jest.setTimeout(30000);
   let server: any;
-  const ollamaClient = new OllamaClient();
   const TEST_PORT = 3100;
 
   beforeAll(async () => {
-    // Set test environment variables
-    process.env.API_PORT = TEST_PORT.toString();
-    process.env.API_HOST = '127.0.0.1';
-    
     // Start the server
     server = await setupServer();
     
@@ -59,17 +52,11 @@ describe('MCP API Integration Tests', () => {
 
       expect(response.body).toHaveProperty('data');
       expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
     });
 
     it('should get a specific model', async () => {
-      // First, ensure we have a model to test with
-      const { models } = await ollamaClient.listModels();
-      if (!models || models.length === 0) {
-        console.warn('No models available for testing');
-        return;
-      }
-
-      const modelName = models[0].name;
+      const modelName = 'mistral:latest';
       const response = await request(getBaseUrl())
         .get(`/api/models/${modelName}`)
         .expect('Content-Type', /json/)
@@ -92,7 +79,7 @@ describe('MCP API Integration Tests', () => {
     it('should create a new model', async () => {
       const response = await request(getBaseUrl())
         .post('/api/models')
-        .send({ name: 'mistral:latest' })
+        .send({ name: 'llama2:latest' })
         .expect('Content-Type', /json/);
       
       if (response.status !== 201) {
@@ -101,18 +88,11 @@ describe('MCP API Integration Tests', () => {
       
       expect(response.status).toBe(201);  
       expect(response.body).toHaveProperty('data');
-      expect(response.body.data).toHaveProperty('name', 'mistral:latest');
+      expect(response.body.data).toHaveProperty('name', 'llama2:latest');
     });
 
     it('should update model configuration', async () => {
-      // First, ensure we have a model to test with
-      const { models } = await ollamaClient.listModels();
-      if (!models || models.length === 0) {
-        console.warn('No models available for testing');
-        return;
-      }
-
-      const modelName = models[0].name;
+      const modelName = 'mistral:latest';
       const config = { temperature: 0.7 };
       
       const response = await request(getBaseUrl())
@@ -126,14 +106,7 @@ describe('MCP API Integration Tests', () => {
     });
 
     it('should delete a model', async () => {
-      // First, ensure we have a model to test with
-      const { models } = await ollamaClient.listModels();
-      if (!models || models.length === 0) {
-        console.warn('No models available for testing');
-        return;
-      }
-
-      const modelName = models[0].name;
+      const modelName = 'llama2:latest';
       await request(getBaseUrl())
         .delete(`/api/models/${modelName}`)
         .expect(204);
@@ -153,6 +126,8 @@ describe('MCP API Integration Tests', () => {
 
       expect(response.body).toHaveProperty('data');
       expect(response.body.data).toHaveProperty('message');
+      expect(response.body.data.message).toHaveProperty('role', 'assistant');
+      expect(response.body.data.message).toHaveProperty('content');
     });
 
     it('should handle streaming chat requests', async () => {
@@ -167,6 +142,8 @@ describe('MCP API Integration Tests', () => {
 
       // Verify SSE format
       expect(response.text).toMatch(/^data: /);
+      expect(response.text).toContain('role');
+      expect(response.text).toContain('content');
     });
   });
 

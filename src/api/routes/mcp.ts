@@ -106,7 +106,7 @@ router.post('/models', async (req: Request, res: Response) => {
 
 router.put('/models/:id', async (req: Request<ModelParams>, res: Response) => {
   try {
-    const config = await modelManager.updateModelConfiguration(
+    const config = await modelManager.updateModel(
       req.params.id,
       req.body
     );
