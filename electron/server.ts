@@ -9,6 +9,9 @@ import { WebSocketMessageUnion } from '../src/types/websocket';
 import { OllamaModelManager } from '../src/services/ollama/model-manager';
 import { prisma } from '../src/services/database/client';
 import { OllamaClient } from '../src/services/ollama/client';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from 'crypto';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
@@ -21,8 +24,6 @@ const ALLOWED_ORIGINS = [
   'app://rse',
   'ws://localhost:3100',
   // Add Replit domains
-  'https://*.repl.co',
-  'https://*.repl.it',
   'https://*.replit.com',
   // Development and production URLs
   process.env.NEXT_PUBLIC_APP_URL,
@@ -103,6 +104,24 @@ export async function setupServer() {
 
   // Add MCP routes
   app.use('/api', mcpRouter);
+
+  const mcpServer = new McpServer({
+    name: "my-mcp-server",
+    version: "1.0.0"
+  });
+
+  app.all('/mcp', async (req, res) => {
+    // Create a new transport for each session/request
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      enableJsonResponse: true,
+      onsessioninitialized: (sessionId) => {
+        // Optionally track session
+      }
+    });
+    await mcpServer.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  });
 
   // Add error handling middleware
   app.use(notFoundHandler);

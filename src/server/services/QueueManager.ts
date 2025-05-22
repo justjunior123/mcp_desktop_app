@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { MCPRequest, MCPQueueItem } from '../types/mcp';
+import { MCPRequest, MCPQueueItem } from '@/types/mcp';
 
 export class QueueManager extends EventEmitter {
   private queue: MCPQueueItem[];
