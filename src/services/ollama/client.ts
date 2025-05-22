@@ -7,26 +7,6 @@ import {
   OllamaEmbeddingRequest,
   OllamaEmbeddingResponse,
 } from './types';
-import fs from 'fs';
-import path from 'path';
-
-const logFile = path.join(process.cwd(), 'ollama-client.log');
-
-function prodLog(level: 'info' | 'error', message: string, meta?: any) {
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    level,
-    message,
-    ...(meta ? { meta } : {})
-  };
-  const line = JSON.stringify(logEntry);
-  fs.appendFileSync(logFile, line + '\n');
-  if (level === 'error') {
-    console.error(line);
-  } else {
-    console.log(line);
-  }
-}
 
 export class OllamaError extends Error {
   constructor(message: string, public statusCode?: number) {
@@ -131,10 +111,10 @@ export class OllamaClient {
       let data: any;
       try {
         data = JSON.parse(text);
-      } catch (parseError: any) {
+      } catch (parseError: unknown) {
         // Log the parse error with more context
         console.error(`${logPrefix} JSON PARSE ERROR:`, {
-          error: parseError,
+          error: parseError instanceof Error ? parseError.message : String(parseError),
           responseText: text.length > 1000 ? text.slice(0, 1000) + '...[truncated]' : text,
           endpoint,
           status: response.status
@@ -301,38 +281,27 @@ export class OllamaClient {
   }
 
   async chat(request: OllamaChatRequest): Promise<OllamaChatResponse> {
-    prodLog('info', 'chat: entry', { request });
-    try {
-      const response = await this.request<OllamaChatResponse>('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify(request),
-      });
-      prodLog('info', 'chat: success', { response });
-      return response;
-    } catch (error) {
-      prodLog('error', 'chat: error', { error: error instanceof Error ? error.message : 'Unknown error' });
-      throw error;
-    }
+    return this.request('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   async *chatStream(request: OllamaChatRequest): AsyncGenerator<OllamaChatResponse> {
-    prodLog('info', 'chatStream: entry', { request });
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ ...request, stream: true }),
     });
 
     if (!response.ok) {
-      const error = new OllamaError(`HTTP error ${response.status}`, response.status);
-      prodLog('error', 'chatStream: HTTP error', { error: error.message });
-      throw error;
+      throw new OllamaError(`HTTP error ${response.status}`, response.status);
     }
 
     if (!response.body) {
-      const error = new OllamaError('No response body');
-      prodLog('error', 'chatStream: No response body');
-      throw error;
+      throw new OllamaError('No response body');
     }
 
     const reader = response.body.getReader();
@@ -342,17 +311,12 @@ export class OllamaClient {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n').filter(Boolean);
+
         for (const line of lines) {
-          try {
-            const data = JSON.parse(line) as OllamaChatResponse;
-            prodLog('info', 'chatStream: chunk', { data });
-            yield data;
-          } catch (parseError: unknown) {
-            const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
-            prodLog('error', 'chatStream: JSON parse error', { line, error: errorMessage });
-          }
+          yield JSON.parse(line) as OllamaChatResponse;
         }
       }
     } finally {

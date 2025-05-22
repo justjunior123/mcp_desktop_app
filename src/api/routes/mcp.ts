@@ -1,4 +1,4 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import express, { Request, Response, Router, RequestHandler } from 'express';
 import { OllamaClient } from '../../services/ollama/client';
 import { OllamaModelManager } from '../../services/ollama/model-manager';
 import { prisma } from '../../services/database/client';
@@ -34,16 +34,15 @@ function serializeBigInt(obj: any): any {
   return obj;
 }
 
-const router = Router();
+const router: Router = express.Router();
 const ollamaClient = new OllamaClient();
 const modelManager = new OllamaModelManager(prisma, ollamaClient);
 
 // Models Resource
-router.get('/models', async (req: Request, res: Response) => {
+const listModelsHandler: RequestHandler = async (req, res) => {
   try {
-    await modelManager.syncModels();
     const models = await modelManager.listModels();
-    res.json({ data: models.map(serializeBigInt) });
+    res.json({ data: models });
   } catch (error) {
     console.error('Error listing models:', error);
     res.status(500).json({ 
@@ -53,7 +52,9 @@ router.get('/models', async (req: Request, res: Response) => {
       }
     });
   }
-});
+};
+
+router.get('/models', listModelsHandler);
 
 router.get('/models/:id', async (req: Request<ModelParams>, res: Response) => {
   try {
@@ -98,10 +99,8 @@ router.post('/models', async (req: Request, res: Response) => {
         name 
       }
     });
-    return;
   } catch (error) {
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : String(error) } });
-    return;
   }
 });
 

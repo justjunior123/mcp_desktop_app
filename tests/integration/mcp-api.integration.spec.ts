@@ -102,14 +102,6 @@ describe('MCP API Integration Tests', () => {
       expect(response.status).toBe(201);  
       expect(response.body).toHaveProperty('data');
       expect(response.body.data).toHaveProperty('name', 'mistral:latest');
-
-      // Production-level debug: log all available models after creation
-      const models = await request(getBaseUrl())
-        .get('/api/models')
-        .expect('Content-Type', /json/)
-        .expect(200);
-      const modelNames = (models.body.data || []).map((m: any) => ({ name: m.name, status: m.status }));
-      fs.writeFileSync('models-after-create.log', JSON.stringify(modelNames, null, 2));
     });
 
     it('should update model configuration', async () => {
@@ -149,14 +141,6 @@ describe('MCP API Integration Tests', () => {
   });
 
   describe('Chat Endpoints', () => {
-    beforeAll(async () => {
-      // Ensure the model exists before running chat tests
-      await request(getBaseUrl())
-        .post('/api/models')
-        .send({ name: 'mistral:latest' })
-        .expect('Content-Type', /json/);
-    });
-
     it('should handle chat requests', async () => {
       const modelName = 'mistral:latest';
       const response = await request(getBaseUrl())

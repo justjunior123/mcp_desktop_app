@@ -9,9 +9,6 @@ import { WebSocketMessageUnion } from '../src/types/websocket';
 import { OllamaModelManager } from '../src/services/ollama/model-manager';
 import { prisma } from '../src/services/database/client';
 import { OllamaClient } from '../src/services/ollama/client';
-import { OllamaBridge } from '../src/services/mcp/ollama-bridge';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
@@ -60,33 +57,32 @@ export async function setupServer() {
   const ollamaClient = new OllamaClient();
   const modelManager = new OllamaModelManager(prisma, ollamaClient);
 
-  // Mount MCP bridge at /mcp
-  const ollamaBridge = new OllamaBridge(ollamaClient);
-  app.use('/mcp', ollamaBridge.expressAppInstance);
-
   // Enhanced middleware
   app.use(express.json());
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if the origin is allowed
+      const isAllowed = ALLOWED_ORIGINS.some(allowedOrigin => {
+        if (allowedOrigin?.includes('*')) {
+          const pattern = new RegExp(allowedOrigin.replace('*', '.*'));
+          return pattern.test(origin);
+        }
+        return allowedOrigin === origin;
+      });
 
-  // --- MCP Streamable HTTP endpoint for Inspector and MCP clients ---
-  const mcpServer = new McpServer({
-    name: 'my-mcp-server',
-    version: '1.0.0',
-    // Register tools/resources here as needed
-  });
-
-  app.all('/mcp', async (req, res) => {
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => Math.random().toString(36).slice(2),
-      enableJsonResponse: true,
-      onsessioninitialized: (sessionId: string) => {
-        // Optionally track session
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
       }
-    });
-    // The connect method is valid per SDK types
-    // @ts-ignore
-    await mcpServer.connect(transport);
-    await transport.handleRequest(req, res, req.body);
-  });
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  }));
 
   // Basic health check endpoint
   app.get('/health', (req, res) => {
@@ -119,10 +115,114 @@ export async function setupServer() {
         console.log(`API Server running on ${API_HOST}:${API_PORT}`);
         const fs = require('fs');
         fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] server.ts: API Server running on ${API_HOST}:${API_PORT}\n`);
+
+        // Set up WebSocket server with external access support
+        wss = new WebSocketServer({ 
+          server: server as HttpServer,
+          // Add WebSocket specific configurations
+          perMessageDeflate: {
+            zlibDeflateOptions: {
+              chunkSize: 1024,
+              memLevel: 7,
+              level: 3
+            },
+            zlibInflateOptions: {
+              chunkSize: 10 * 1024
+            },
+            clientNoContextTakeover: true,
+            serverNoContextTakeover: true,
+            serverMaxWindowBits: 10,
+            concurrencyLimit: 10,
+            threshold: 1024
+          }
+        });
+
+        wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+          const clientIp = req.socket.remoteAddress;
+          console.log(`WebSocket client connected from ${clientIp}`);
+
+          // Keep connection alive
+          const pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.ping();
+            }
+          }, 30000);
+
+          ws.on('message', async (message: RawData) => {
+            try {
+              const data = JSON.parse(message.toString()) as WebSocketMessageUnion;
+              
+              if (data.type === 'refreshModels') {
+                // Check Ollama health before syncing
+                const isHealthy = await ollamaClient.healthCheck();
+                if (!isHealthy) {
+                  ws.send(JSON.stringify({
+                    type: 'error',
+                    payload: {
+                      code: 'SERVICE_UNAVAILABLE',
+                      message: 'Ollama server is not available'
+                    }
+                  }));
+                  return;
+                }
+
+                // Sync with Ollama and send updated model list
+                await modelManager.syncModels();
+                const models = await modelManager.listModels();
+                ws.send(JSON.stringify({
+                  type: 'initialStatus',
+                  payload: { data: models }
+                }));
+              }
+            } catch (error) {
+              console.error('Error handling WebSocket message:', error);
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: {
+                  code: 'INTERNAL_ERROR',
+                  message: error instanceof Error ? error.message : 'Unknown error'
+                }
+              }));
+            }
+          });
+
+          ws.on('close', () => {
+            clearInterval(pingInterval);
+            console.log(`WebSocket client disconnected from ${clientIp}`);
+          });
+
+          ws.on('error', (error) => {
+            console.error(`WebSocket error from ${clientIp}:`, error);
+            clearInterval(pingInterval);
+          });
+        });
+
+        resolve(server as HttpServer);
       });
-      resolve(server);
+
+      // Add error handler for the server
+      server.on('error', (error) => {
+        console.error('Server error:', error);
+        const fs = require('fs');
+        const errorMsg = (error instanceof Error) ? error.message : String(error);
+        fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] server.ts: Server error: ${errorMsg}\n`);
+      });
     } catch (err) {
+      const fs = require('fs');
+      const errorMsg = (err instanceof Error) ? err.message : String(err);
+      fs.appendFileSync('parameters-debug.log', `[${new Date().toISOString()}] setupServer: Caught error: ${errorMsg}\n`);
       reject(err);
     }
   });
 }
+
+export function cleanup() {
+  if (wss) {
+    wss.close();
+    wss = null;
+  }
+  if (server) {
+    server.close();
+    server = null;
+  }
+} 

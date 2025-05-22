@@ -1,12 +1,7 @@
 declare module '@modelcontextprotocol/sdk' {
   import { IncomingMessage, ServerResponse } from 'http';
   import { Express } from 'express';
-  import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk';
-  export { StreamableHTTPServerTransport };
 
-declare module '@modelcontextprotocol/sdk/server/streamableHttp' {
-  export * from '@modelcontextprotocol/sdk/dist/esm/server/streamableHttp';
-} 
   interface McpServerConfig {
     name: string;
     version: string;
