@@ -10,7 +10,6 @@ import { OllamaModelManager } from '../src/services/ollama/model-manager';
 import { prisma } from '../src/services/database/client';
 import { OllamaClient } from '../src/services/ollama/client';
 import { McpService } from '../src/services/mcp/service';
-import { mockOllamaClient, mockModelManager } from '../tests/setup';
 import { OllamaChatMessage } from '../src/services/ollama/types';
 import fs from 'fs';
 
@@ -53,8 +52,8 @@ const notFoundHandler = (req: Request, res: Response) => {
 };
 
 const isTest = process.env.NODE_ENV === 'test';
-const ollamaClient = isTest ? mockOllamaClient : new OllamaClient();
-const modelManager = isTest ? mockModelManager : new OllamaModelManager(prisma, ollamaClient as OllamaClient);
+const ollamaClient = new OllamaClient();
+const modelManager = new OllamaModelManager(prisma, ollamaClient);
 
 // Utility to safely serialize BigInt values to strings
 function serializeBigInt(obj: any): any {

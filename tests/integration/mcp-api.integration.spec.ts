@@ -1,8 +1,12 @@
 import request from 'supertest';
 import { setupServer, cleanup } from '../../electron/server';
-import { prisma, mockOllamaClient } from '../setup';
+import { prisma } from '../setup';
+import { getTestInstances } from '../../electron/test-utils';
 import fs from 'fs';
 import path from 'path';
+
+// Set test environment
+(process as any).env.NODE_ENV = 'test';
 
 describe('MCP API Integration Tests', () => {
   jest.setTimeout(30000);
