@@ -27,6 +27,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.js"
+    "**/*.js",
+    "tests/**/*",
+    "../tests/**/*"
   ]
 } 
