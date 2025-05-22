@@ -111,16 +111,16 @@ export class OllamaClient {
       let data: any;
       try {
         data = JSON.parse(text);
-      } catch (parseError) {
+      } catch (parseError: unknown) {
         // Log the parse error with more context
         console.error(`${logPrefix} JSON PARSE ERROR:`, {
-          error: parseError,
+          error: parseError instanceof Error ? parseError.message : String(parseError),
           responseText: text.length > 1000 ? text.slice(0, 1000) + '...[truncated]' : text,
           endpoint,
           status: response.status
         });
         throw new OllamaError(
-          `Invalid JSON response from server (${endpoint}): ${parseError.message}`,
+          `Invalid JSON response from server (${endpoint}): ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           response.status
         );
       }
