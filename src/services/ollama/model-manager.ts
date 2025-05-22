@@ -200,6 +200,11 @@ export class OllamaModelManager {
         include: { configuration: true }
       });
       prodLog('info', 'getModel: success', { found: !!model });
+      if (!model) {
+        // Log all available models for debugging
+        const allModels = await this.prisma.ollamaModel.findMany();
+        prodLog('error', 'getModel: model not found, available models', { requested: name, available: allModels.map((m: any) => ({ name: m.name, status: m.status })) });
+      }
       return model;
     } catch (error) {
       prodLog('error', 'getModel: error', { error: error instanceof Error ? error.stack || error.message : error });
