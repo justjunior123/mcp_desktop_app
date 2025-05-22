@@ -221,11 +221,15 @@ export async function setupServer() {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      const response = await ollamaClient.chatStream({
+      const stream = ollamaClient.chatStream({
         model: req.params.name,
         messages: messages
       });
-      res.write(`data: ${JSON.stringify(response)}\n\n`);
+
+      // Write each chunk as an SSE event
+      for await (const chunk of stream) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      }
       res.end();
     } catch (error) {
       console.error('Error in streaming chat:', error);
