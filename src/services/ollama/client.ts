@@ -7,6 +7,8 @@ import {
   OllamaEmbeddingRequest,
   OllamaEmbeddingResponse,
 } from './types';
+import fetch from 'node-fetch';
+import { Readable } from 'stream';
 
 export class OllamaError extends Error {
   constructor(message: string, public statusCode?: number) {
@@ -288,39 +290,90 @@ export class OllamaClient {
   }
 
   async *chatStream(request: OllamaChatRequest): AsyncGenerator<OllamaChatResponse> {
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ ...request, stream: true }),
-    });
-
-    if (!response.ok) {
-      throw new OllamaError(`HTTP error ${response.status}`, response.status);
-    }
-
-    if (!response.body) {
-      throw new OllamaError('No response body');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
+    const CHUNK_SIZE_WARNING_THRESHOLD = 1024 * 1024; // 1MB
+    const startTime = Date.now();
+    let totalBytes = 0;
+    let chunkCount = 0;
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...request, stream: true }),
+      });
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(Boolean);
+      if (!response.ok) {
+        throw new OllamaError(`HTTP error ${response.status}`, response.status);
+      }
+
+      if (!response.body) {
+        throw new OllamaError('No response body');
+      }
+
+      let buffer = '';
+      for await (const chunk of response.body as any) {
+        const chunkStr = chunk.toString();
+        const chunkSize = chunkStr.length;
+        totalBytes += chunkSize;
+        chunkCount++;
+
+        // Log warning for large chunks
+        if (chunkSize > CHUNK_SIZE_WARNING_THRESHOLD) {
+          console.warn(`[OllamaClient] Large chunk received: ${chunkSize} bytes`);
+        }
+
+        buffer += chunkStr;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
-          yield JSON.parse(line) as OllamaChatResponse;
+          if (line.trim()) {
+            try {
+              const data = JSON.parse(line);
+              yield data as OllamaChatResponse;
+            } catch (e) {
+              console.error('[OllamaClient] Failed to parse chunk:', {
+                error: e instanceof Error ? e.message : String(e),
+                line: line.length > 100 ? line.slice(0, 100) + '...' : line
+              });
+            }
+          }
         }
       }
-    } finally {
-      reader.releaseLock();
+
+      // Process any remaining data in the buffer
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer);
+          yield data as OllamaChatResponse;
+        } catch (e) {
+          console.error('[OllamaClient] Failed to parse final chunk:', {
+            error: e instanceof Error ? e.message : String(e),
+            buffer: buffer.length > 100 ? buffer.slice(0, 100) + '...' : buffer
+          });
+        }
+      }
+
+      // Log stream completion statistics
+      const duration = Date.now() - startTime;
+      console.log('[OllamaClient] Stream completed:', {
+        duration: `${duration}ms`,
+        totalChunks: chunkCount,
+        totalBytes,
+        averageChunkSize: Math.round(totalBytes / chunkCount),
+        model: request.model
+      });
+    } catch (error) {
+      console.error('[OllamaClient] Stream error:', {
+        error: error instanceof Error ? error.message : String(error),
+        model: request.model,
+        duration: `${Date.now() - startTime}ms`,
+        totalChunks: chunkCount,
+        totalBytes
+      });
+      throw error;
     }
   }
 

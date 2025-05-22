@@ -70,6 +70,19 @@ module.exports = {
         '^@services/(.*)$': '<rootDir>/src/services/$1',
         '^@types/(.*)$': '<rootDir>/src/types/$1'
       }
+    },
+    {
+      displayName: 'e2e',
+      testEnvironment: 'node',
+      testMatch: ['**/tests/e2e/**/*.e2e.spec.ts'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.node.js'],
+      transform: {
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          tsconfig: 'tsconfig.json',
+          useESM: false
+        }]
+      }
     }
-  ]
+  ],
+  testTimeout: 120000 // Global timeout of 2 minutes
 }; 
