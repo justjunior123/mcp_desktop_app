@@ -114,6 +114,15 @@ export async function setupServer() {
 
   // MCP endpoint
   app.all('/mcp', async (req, res) => {
+    if (!mcpService) {
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'MCP service not initialized'
+        }
+      });
+      return;
+    }
     await mcpService.handleRequest(req, res);
   });
 
