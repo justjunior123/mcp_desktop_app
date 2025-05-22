@@ -168,6 +168,8 @@ export class MockOllamaModelManager {
         logToFile('Model not found for update', name);
         throw new Error('Model not found');
       }
+      
+      // Update the model's configuration
       const updatedModel = {
         ...model,
         configuration: {
@@ -176,15 +178,19 @@ export class MockOllamaModelManager {
         }
       };
       this.models.set(name, updatedModel);
+
+      // Return the model info with config at root level
       const result = {
         name: updatedModel.name,
         size: updatedModel.size,
         digest: updatedModel.digest,
         details: {
           ...updatedModel.parameters,
-          ...config
-        }
+          ...config  // Include config in details as well
+        },
+        ...config  // Include config at root level
       };
+      
       logToFile('updateModel returning', result);
       return result;
     } catch (error) {
