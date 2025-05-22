@@ -6,6 +6,7 @@ export class SessionManager extends EventEmitter {
     lastActivity: Date;
     status: 'initializing' | 'active' | 'closed';
   }> = new Map();
+  private cleanupIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -48,7 +49,7 @@ export class SessionManager extends EventEmitter {
 
   private startCleanupInterval(): void {
     // Clean up inactive sessions every 5 minutes
-    setInterval(() => {
+    this.cleanupIntervalId = setInterval(() => {
       const now = new Date();
       for (const [sessionId, session] of this.sessions.entries()) {
         // Close sessions inactive for more than 30 minutes
@@ -58,5 +59,14 @@ export class SessionManager extends EventEmitter {
         }
       }
     }, 5 * 60 * 1000);
+  }
+
+  public cleanup(): void {
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
+    }
+    this.sessions.clear();
+    this.removeAllListeners();
   }
 } 

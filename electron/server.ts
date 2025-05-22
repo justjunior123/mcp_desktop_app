@@ -16,6 +16,7 @@ import fs from 'fs';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
+let mcpService: McpService | null = null;
 const API_PORT = parseInt(process.env.API_PORT || '3100', 10);
 const API_HOST = process.env.API_HOST || '0.0.0.0';
 
@@ -70,7 +71,7 @@ function serializeBigInt(obj: any): any {
 
 export async function setupServer() {
   const app = express();
-  const mcpService = new McpService(modelManager as OllamaModelManager);
+  mcpService = new McpService(modelManager as OllamaModelManager);
 
   // Enhanced middleware
   app.use(express.json());
@@ -287,6 +288,11 @@ export async function cleanup() {
   if (server) {
     server.close();
     server = null;
+  }
+  // Clean up the session manager
+  if (mcpService) {
+    mcpService.cleanup();
+    mcpService = null;
   }
   await prisma.$disconnect();
 } 

@@ -107,4 +107,8 @@ export class McpService {
       }
     });
   }
+
+  public cleanup(): void {
+    this.sessionManager.cleanup();
+  }
 } 

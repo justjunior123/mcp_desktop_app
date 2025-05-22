@@ -36,7 +36,9 @@ describe('MCP API Integration Tests', () => {
   });
 
   afterAll(async () => {
+    // Ensure cleanup is completed before moving on
     await cleanup();
+    await new Promise(resolve => setTimeout(resolve, 100)); // Give time for cleanup to complete
     await prisma.$disconnect();
   });
 
