@@ -6,7 +6,71 @@ import fs from 'fs';
 import path from 'path';
 
 // Set test environment
-(process as any).env.NODE_ENV = 'test';
+Object.defineProperty(process.env, 'NODE_ENV', {
+  value: 'test',
+  writable: true
+});
+
+// Mock Ollama service
+jest.mock('../../src/services/ollama/client', () => ({
+  OllamaClient: jest.fn().mockImplementation(() => ({
+    getModel: jest.fn().mockResolvedValue({
+      name: 'mistral:latest',
+      size: 1234567890,
+      digest: 'sha256:1234567890',
+      format: 'gguf',
+      family: 'llama'
+    }),
+    pullModel: jest.fn().mockResolvedValue({
+      name: 'llama2:latest',
+      size: 1234567890,
+      digest: 'sha256:1234567890',
+      format: 'gguf',
+      family: 'llama'
+    }),
+    chat: jest.fn().mockResolvedValue({
+      model: 'mistral:latest',
+      message: {
+        role: 'assistant',
+        content: 'Hello! How can I help you today?'
+      },
+      done: true,
+      total_duration: 100,
+      load_duration: 50,
+      prompt_eval_duration: 25,
+      eval_duration: 25
+    }),
+    chatStream: jest.fn().mockImplementation(async function* () {
+      // First chunk
+      yield {
+        model: 'mistral:latest',
+        message: {
+          role: 'assistant',
+          content: 'Hello'
+        },
+        done: false,
+        total_duration: 50,
+        load_duration: 25,
+        prompt_eval_duration: 12,
+        eval_duration: 13
+      };
+      
+      // Second chunk
+      yield {
+        model: 'mistral:latest',
+        message: {
+          role: 'assistant',
+          content: '! How can I help you today?'
+        },
+        done: true,
+        total_duration: 100,
+        load_duration: 25,
+        prompt_eval_duration: 13,
+        eval_duration: 12
+      };
+    })
+  }))
+}));
 
 describe('MCP API Integration Tests', () => {
   jest.setTimeout(30000);
@@ -108,7 +172,7 @@ describe('MCP API Integration Tests', () => {
         .expect(200);
 
       expect(response.body).toHaveProperty('data');
-      expect(response.body.data).toHaveProperty('temperature', 0.7);
+      expect(response.body.data.configuration).toHaveProperty('temperature', 0.7);
     });
 
     it('should delete a model', async () => {
@@ -146,10 +210,39 @@ describe('MCP API Integration Tests', () => {
         .expect('Content-Type', 'text/event-stream')
         .expect(200);
 
-      // Verify SSE format
-      expect(response.text).toMatch(/^data: /);
-      expect(response.text).toContain('role');
-      expect(response.text).toContain('content');
+      // Verify SSE format and content
+      const lines = response.text.split('\n\n').filter(Boolean);
+      expect(lines.length).toBe(2); // Two chunks
+
+      // First chunk
+      const firstChunk = JSON.parse(lines[0].replace('data: ', ''));
+      expect(firstChunk).toEqual({
+        model: 'mistral:latest',
+        message: {
+          role: 'assistant',
+          content: 'Hello'
+        },
+        done: false,
+        total_duration: 50,
+        load_duration: 25,
+        prompt_eval_duration: 12,
+        eval_duration: 13
+      });
+
+      // Second chunk
+      const secondChunk = JSON.parse(lines[1].replace('data: ', ''));
+      expect(secondChunk).toEqual({
+        model: 'mistral:latest',
+        message: {
+          role: 'assistant',
+          content: '! How can I help you today?'
+        },
+        done: true,
+        total_duration: 100,
+        load_duration: 25,
+        prompt_eval_duration: 13,
+        eval_duration: 12
+      });
     });
   });
 

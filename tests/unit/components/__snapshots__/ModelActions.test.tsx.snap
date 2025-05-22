@@ -1,0 +1,71 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ModelActions Component renders correctly when model has error 1`] = `
+<div>
+  <div
+    class="flex gap-2"
+  >
+    <div
+      class="text-red-500"
+    >
+      Error: Test error
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ModelActions Component renders correctly when model is available 1`] = `
+<div>
+  <div
+    class="flex gap-2"
+  >
+    <button
+      class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+      onClick={[Function]}
+    >
+      Configure
+    </button>
+    <button
+      class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+      onClick={[Function]}
+    >
+      Delete
+    </button>
+  </div>
+</div>
+`;
+
+exports[`ModelActions Component renders correctly when model is downloading 1`] = `
+<div>
+  <div
+    class="flex gap-2"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <div
+        class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"
+        role="status"
+      />
+      <span>
+        Downloading...
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ModelActions Component renders correctly when model is not downloaded 1`] = `
+<div>
+  <div
+    class="flex gap-2"
+  >
+    <button
+      class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      onClick={[Function]}
+    >
+      Pull Model
+    </button>
+  </div>
+</div>
+`;
