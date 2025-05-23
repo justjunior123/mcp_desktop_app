@@ -141,6 +141,28 @@ jest.mock('../../src/services/ollama/model-manager', () => ({
         return Promise.resolve();
       }
       throw new Error('Model not found');
+    }),
+    chat: jest.fn().mockImplementation((modelName: string, messages: any[], opts: any, onChunk: (chunk: any) => void) => {
+      // emit two chunks for streaming test
+      onChunk({
+        model: modelName,
+        message: { role: 'assistant', content: 'Hello' },
+        done: false,
+        total_duration: 50,
+        load_duration: 25,
+        prompt_eval_duration: 12,
+        eval_duration: 13
+      });
+      onChunk({
+        model: modelName,
+        message: { role: 'assistant', content: '! How can I help you today?' },
+        done: true,
+        total_duration: 100,
+        load_duration: 25,
+        prompt_eval_duration: 13,
+        eval_duration: 12
+      });
+      return Promise.resolve();
     })
   }))
 }));
