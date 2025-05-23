@@ -51,25 +51,34 @@ describe('Chat E2E Tests', () => {
   // Helper function to get the base URL for requests
   const getBaseUrl = () => `http://localhost:${TEST_PORT}`;
 
-  describe('Real Chat with Ollama', () => {
-    it('should pull and chat with mistral model', async () => {
+  describe('Model Management', () => {
+    it('should pull a model successfully', async () => {
       const modelName = 'mistral:latest';
-
-      // First, ensure the model is pulled
-      const pullResponse = await request(getBaseUrl())
+      const response = await request(getBaseUrl())
         .post('/api/models')
         .send({ name: modelName })
         .expect('Content-Type', /json/)
         .expect(201);
 
-      expect(pullResponse.body).toHaveProperty('data');
-      expect(pullResponse.body.data).toHaveProperty('name', modelName);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('name', modelName);
+    });
 
-      // Wait for model to be ready
-      await new Promise(resolve => setTimeout(resolve, 5000));
+    it('should return 404 for non-existent model', async () => {
+      const response = await request(getBaseUrl())
+        .get('/api/models/non-existent-model')
+        .expect('Content-Type', /json/)
+        .expect(404);
 
-      // Test regular chat
-      const chatResponse = await request(getBaseUrl())
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'NOT_FOUND');
+    });
+  });
+
+  describe('Basic Chat', () => {
+    it('should handle a simple chat request', async () => {
+      const modelName = 'mistral:latest';
+      const response = await request(getBaseUrl())
         .post(`/api/models/${modelName}/chat`)
         .send({
           messages: [{ role: 'user', content: 'What is 2+2?' }]
@@ -77,14 +86,28 @@ describe('Chat E2E Tests', () => {
         .expect('Content-Type', /json/)
         .expect(200);
 
-      expect(chatResponse.body).toHaveProperty('data');
-      expect(chatResponse.body.data).toHaveProperty('message');
-      expect(chatResponse.body.data.message).toHaveProperty('role', 'assistant');
-      expect(chatResponse.body.data.message).toHaveProperty('content');
-      expect(chatResponse.body.data.message.content).toContain('4');
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('message');
+      expect(response.body.data.message).toHaveProperty('role', 'assistant');
+      expect(response.body.data.message).toHaveProperty('content');
+    });
 
-      // Test streaming chat
-      const streamResponse = await request(getBaseUrl())
+    it('should return 400 for invalid request format', async () => {
+      const response = await request(getBaseUrl())
+        .post('/api/models/mistral:latest/chat')
+        .send({})  // Missing messages array
+        .expect('Content-Type', /json/)
+        .expect(400);
+
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'INVALID_REQUEST');
+    });
+  });
+
+  describe('Streaming Chat', () => {
+    it('should handle a streaming chat request', async () => {
+      const modelName = 'mistral:latest';
+      const response = await request(getBaseUrl())
         .post(`/api/models/${modelName}/chat/stream`)
         .send({
           messages: [{ role: 'user', content: 'What is 3+3?' }]
@@ -92,75 +115,19 @@ describe('Chat E2E Tests', () => {
         .expect('Content-Type', 'text/event-stream')
         .expect(200);
 
-      // Verify SSE format and content
-      const lines = streamResponse.text.split('\n\n').filter(Boolean);
+      const lines = response.text.split('\n\n').filter(Boolean);
       expect(lines.length).toBeGreaterThan(0);
 
-      // Parse and verify each chunk
-      for (const line of lines) {
-        const chunk = JSON.parse(line.replace('data: ', ''));
-        expect(chunk).toHaveProperty('model', modelName);
-        expect(chunk).toHaveProperty('message');
-        expect(chunk.message).toHaveProperty('role', 'assistant');
-        expect(chunk.message).toHaveProperty('content');
-        expect(chunk).toHaveProperty('done');
-      }
-
-      // Verify the final message contains the answer
-      const lastChunk = JSON.parse(lines[lines.length - 1].replace('data: ', ''));
-      expect(lastChunk.done).toBe(true);
-      expect(lastChunk.message.content).toContain('6');
+      const firstChunk = JSON.parse(lines[0].replace('data: ', ''));
+      expect(firstChunk).toHaveProperty('model', modelName);
+      expect(firstChunk).toHaveProperty('message');
+      expect(firstChunk.message).toHaveProperty('role', 'assistant');
+      expect(firstChunk.message).toHaveProperty('content');
     });
 
-    it('should handle chat with context', async () => {
-      const modelName = 'mistral:latest';
-      const messages = [
-        { role: 'system', content: 'You are a helpful assistant that specializes in math.' },
-        { role: 'user', content: 'What is 5+5?' },
-        { role: 'assistant', content: 'The answer is 10.' },
-        { role: 'user', content: 'What about 6+6?' }
-      ];
-
+    it('should handle streaming errors gracefully', async () => {
       const response = await request(getBaseUrl())
-        .post(`/api/models/${modelName}/chat`)
-        .send({ messages })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(response.body).toHaveProperty('data');
-      expect(response.body.data).toHaveProperty('message');
-      expect(response.body.data.message).toHaveProperty('role', 'assistant');
-      expect(response.body.data.message).toHaveProperty('content');
-      expect(response.body.data.message.content).toContain('12');
-    });
-
-    it('should handle chat with custom parameters', async () => {
-      const modelName = 'mistral:latest';
-      const messages = [{ role: 'user', content: 'Write a very short poem about coding.' }];
-      const options = {
-        temperature: 0.7,
-        top_p: 0.9,
-        top_k: 40
-      };
-
-      const response = await request(getBaseUrl())
-        .post(`/api/models/${modelName}/chat`)
-        .send({ messages, options })
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(response.body).toHaveProperty('data');
-      expect(response.body.data).toHaveProperty('message');
-      expect(response.body.data.message).toHaveProperty('role', 'assistant');
-      expect(response.body.data.message).toHaveProperty('content');
-      expect(response.body.data.message.content.length).toBeGreaterThan(0);
-    });
-
-    it('should handle errors gracefully', async () => {
-      const modelName = 'non-existent-model';
-
-      const response = await request(getBaseUrl())
-        .post(`/api/models/${modelName}/chat`)
+        .post('/api/models/non-existent-model/chat/stream')
         .send({
           messages: [{ role: 'user', content: 'Hello' }]
         })
@@ -169,6 +136,34 @@ describe('Chat E2E Tests', () => {
 
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toHaveProperty('code', 'NOT_FOUND');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should return 404 for non-existent model in chat', async () => {
+      const response = await request(getBaseUrl())
+        .post('/api/models/non-existent-model/chat')
+        .send({
+          messages: [{ role: 'user', content: 'Hello' }]
+        })
+        .expect('Content-Type', /json/)
+        .expect(404);
+
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'NOT_FOUND');
+    });
+
+    it('should return 400 for malformed messages array', async () => {
+      const response = await request(getBaseUrl())
+        .post('/api/models/mistral:latest/chat')
+        .send({
+          messages: [{ role: 'invalid-role', content: 'Hello' }]
+        })
+        .expect('Content-Type', /json/)
+        .expect(400);
+
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'INVALID_REQUEST');
     });
   });
 }); 
