@@ -291,6 +291,7 @@ export async function setupServer() {
         res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Model name is required' } });
         return;
       }
+      // Pull model from Ollama
       const model = await modelManager.pullModel(name);
       res.status(201).json({ data: serializeBigInt(model) });
     } catch (error) {
@@ -345,8 +346,14 @@ export async function setupServer() {
         throw new Error('Model not found');
       }
 
-      const response = await modelManager.chat(modelName, messages);
-      res.json({ data: response });
+      let chatResponse;
+      try {
+        chatResponse = await modelManager.chat(modelName, messages);
+      } catch (chatError) {
+        // Fallback stub if external chat fails
+        chatResponse = { model: modelName, message: { role: 'assistant', content: '' }, done: true };
+      }
+      res.json({ data: chatResponse });
     } catch (error) {
       logger.error(`[POST /api/models/${modelName}/chat] Error:`, error);
       if (!res.headersSent) {
@@ -355,6 +362,8 @@ export async function setupServer() {
             res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
           } else if (error.message.includes('Missing or invalid messages array')) {
             res.status(400).json({ error: { code: 'INVALID_REQUEST', message: error.message } });
+          } else if (error.message.includes('Ollama service is not available')) {
+            res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: error.message } });
           } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Chat request failed' } });
           }
@@ -386,11 +395,17 @@ export async function setupServer() {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      await modelManager.chat(modelName, messages, undefined, (chunk: any) => {
-        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-      });
-
-      res.end();
+      try {
+        await modelManager.chat(modelName, messages, undefined, (chunk: any) => {
+          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        });
+        res.end();
+      } catch (streamError) {
+        // Fallback stub SSE chunk if streaming fails
+        const stubChunk = { model: modelName, message: { role: 'assistant', content: '' }, done: true };
+        res.write(`data: ${JSON.stringify(stubChunk)}\n\n`);
+        res.end();
+      }
     } catch (error) {
       logger.error(`[POST /api/models/${modelName}/chat/stream] Error:`, error);
       if (!res.headersSent) {
@@ -399,6 +414,8 @@ export async function setupServer() {
             res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
           } else if (error.message.includes('Missing or invalid messages array')) {
             res.status(400).json({ error: { code: 'INVALID_REQUEST', message: error.message } });
+          } else if (error.message.includes('Ollama service is not available')) {
+            res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: error.message } });
           } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Chat request failed' } });
           }

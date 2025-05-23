@@ -354,87 +354,94 @@ export class OllamaModelManager {
 
   async pullModel(name: string, onProgress?: (status: string, progress: number) => void): Promise<OllamaModelData> {
     this.prodLog('info', 'pullModel: entry', { name });
-    
+    // Check if model already exists (ignore 'Model not found' errors)
+    let existingModel: OllamaModelData | null = null;
     try {
-      // Check if model already exists
-      const existingModel = await this.getModel(name);
-      if (existingModel) {
-        this.prodLog('info', 'pullModel: model already exists', { name });
-        return existingModel;
+      existingModel = await this.getModel(name);
+    } catch (err) {
+      if (!(err instanceof Error && err.message.includes('Model not found'))) {
+        this.prodLog('error', 'pullModel: error checking existing model', { name, error: err });
+        throw err;
+      }
+    }
+    if (existingModel) {
+      this.prodLog('info', 'pullModel: model already exists', { name });
+      return existingModel;
+    }
+
+    // Create initial model record with required fields
+    const model = await this.prisma.ollamaModel.upsert({
+      where: { name },
+      create: {
+        name,
+        size: BigInt(0),
+        digest: '',
+        format: 'gguf',
+        family: 'unknown',
+        parameters: {},
+        isDownloaded: false,
+        status: 'downloading',
+        downloadProgress: 0,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      update: {
+        status: 'downloading',
+        downloadProgress: 0,
+        updatedAt: new Date()
+      }
+    });
+
+    this.prodLog('info', 'pullModel: starting Ollama pull', { name });
+
+    try {
+      // Start the pull process
+      await this.ollamaClient.pullModel(name, (status, progress) => {
+        this.prodLog('info', 'pullModel: progress update', { name, status, progress });
+        onProgress?.(status, progress || 0);
+        
+        // Update progress in database
+        this.prisma.ollamaModel.update({
+          where: { name },
+          data: {
+            downloadProgress: progress || 0,
+            status: status === 'success' ? 'ready' : 'downloading',
+            updatedAt: new Date()
+          }
+        }).catch((error: Error) => {
+          this.prodLog('error', 'pullModel: error updating progress', { name, error });
+        });
+      });
+
+      // Verify model exists after pull
+      const modelInfo = await this.ollamaClient.getModel(name);
+      if (!modelInfo) {
+        throw new OllamaError('Failed to get model info after pull: Model not found');
       }
 
-      // Create initial model record
-      const model = await this.prisma.ollamaModel.upsert({
+      // Update model record with success status
+      const updatedModel = await this.prisma.ollamaModel.update({
         where: { name },
-        create: {
-          name,
-          status: 'downloading',
-          downloadProgress: 0,
-          lastUsed: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        update: {
-          status: 'downloading',
-          downloadProgress: 0,
+        data: {
+          status: 'ready',
+          downloadProgress: 100,
           updatedAt: new Date()
         }
       });
 
-      this.prodLog('info', 'pullModel: starting Ollama pull', { name });
-
-      try {
-        // Start the pull process
-        await this.ollamaClient.pullModel(name, (status, progress) => {
-          this.prodLog('info', 'pullModel: progress update', { name, status, progress });
-          onProgress?.(status, progress || 0);
-          
-          // Update progress in database
-          this.prisma.ollamaModel.update({
-            where: { name },
-            data: {
-              downloadProgress: progress || 0,
-              status: status === 'success' ? 'ready' : 'downloading',
-              updatedAt: new Date()
-            }
-          }).catch((error: Error) => {
-            this.prodLog('error', 'pullModel: error updating progress', { name, error });
-          });
-        });
-
-        // Verify model exists after pull
-        const modelInfo = await this.ollamaClient.getModel(name);
-        if (!modelInfo) {
-          throw new OllamaError('Failed to get model info after pull: Model not found');
-        }
-
-        // Update model record with success status
-        const updatedModel = await this.prisma.ollamaModel.update({
-          where: { name },
-          data: {
-            status: 'ready',
-            downloadProgress: 100,
-            updatedAt: new Date()
-          }
-        });
-
-        this.prodLog('info', 'pullModel: success', { name });
-        return updatedModel;
-      } catch (error) {
-        // Update model record with error status
-        await this.prisma.ollamaModel.update({
-          where: { name },
-          data: {
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Unknown error',
-            updatedAt: new Date()
-          }
-        });
-
-        throw error;
-      }
+      this.prodLog('info', 'pullModel: success', { name });
+      return updatedModel;
     } catch (error) {
-      this.prodLog('error', 'pullModel: error', { name, error });
+      // Update model record with error status
+      await this.prisma.ollamaModel.update({
+        where: { name },
+        data: {
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          updatedAt: new Date()
+        }
+      });
+
       throw error;
     }
   }
@@ -554,7 +561,9 @@ export class OllamaModelManager {
         options: mergedOptions
       });
     } catch (error) {
-      this.prodLog('error', 'chat: error', { modelName, error });
+      // Log error message for debugging
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.prodLog('error', 'chat: error', {modelName, error: errMsg});
       throw error;
     }
   }

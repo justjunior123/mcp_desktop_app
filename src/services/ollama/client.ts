@@ -71,12 +71,11 @@ export class OllamaClient {
   }
 
   async getModel(name: string): Promise<OllamaModelInfo> {
-    return this.request<OllamaModelInfo>(`/api/tags/${name}`);
+    return this.request<OllamaModelInfo>(`/api/models/${encodeURIComponent(name)}`);
   }
 
   async listModels(): Promise<OllamaModelInfo[]> {
-    const response = await this.request<{ models: OllamaModelInfo[] }>('/api/tags');
-    return response.models;
+    return this.request<OllamaModelInfo[]>('/api/models');
   }
 
   async pullModel(name: string, onProgress?: (status: string, progress?: number) => void): Promise<OllamaModelInfo> {
@@ -166,20 +165,30 @@ export class OllamaClient {
   }
 
   async chat(request: OllamaChatRequest): Promise<OllamaChatResponse> {
-    return this.request<OllamaChatResponse>('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    const { model, messages, options } = request;
+    // Send chat request to Ollama server for a specific model
+    return this.request<OllamaChatResponse>(
+      `/api/models/${encodeURIComponent(model)}/chat`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ messages, options }),
+      }
+    );
   }
 
   async *chatStream(request: OllamaChatRequest): AsyncGenerator<OllamaChatResponse> {
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ ...request, stream: true }),
-    });
+    const { model, messages, options } = request;
+    // Stream chat response from Ollama server for a specific model
+    const response = await fetch(
+      `${this.baseUrl}/api/models/${encodeURIComponent(model)}/chat/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messages, options }),
+      }
+    );
 
     if (!response.ok) {
       throw new OllamaError(`HTTP error ${response.status}`, response.status);
