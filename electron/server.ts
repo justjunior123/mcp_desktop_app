@@ -20,6 +20,7 @@ let mcpService: McpService | null = null;
 const isTest = process.env.NODE_ENV === 'test';
 const API_PORT = isTest ? 3101 : parseInt(process.env.API_PORT || '3100', 10);
 const API_HOST = process.env.API_HOST || '0.0.0.0';
+const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
 
 // Allow list of origins - can be configured via environment variables
 const ALLOWED_ORIGINS = [
@@ -407,54 +408,57 @@ export async function setupServer() {
 
   app.post('/api/models/:name/chat/stream', async (req, res) => {
     const modelName = req.params.name;
-    console.log(`[POST /api/models/${modelName}/chat/stream] Starting streaming chat request`);
-    
+    const { messages } = req.body;
+
+    if (!messages || !Array.isArray(messages)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'Messages array is required'
+        }
+      });
+      return;
+    }
+
     try {
-      const { messages } = req.body;
-      if (!messages || !Array.isArray(messages)) {
-        console.log(`[POST /api/models/${modelName}/chat/stream] Invalid messages format`);
-        res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } });
+      const model = await modelManager.getModel(modelName);
+      if (!model) {
+        res.status(404).json({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Model not found'
+          }
+        });
         return;
       }
 
-      // Check if model exists first
-      try {
-        console.log(`[POST /api/models/${modelName}/chat/stream] Verifying model exists`);
-        await modelManager.getModel(modelName);
-      } catch (error) {
-        console.error(`[POST /api/models/${modelName}/chat/stream] Model verification failed:`, error);
-        if (error instanceof Error && error.message === 'Model not found') {
-          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
-          return;
-        }
-        throw error;
-      }
-
-      // Set SSE headers
-      console.log(`[POST /api/models/${modelName}/chat/stream] Setting SSE headers`);
+      // Set headers for SSE
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      console.log(`[POST /api/models/${modelName}/chat/stream] Starting chat stream`);
+      // Get the stream from Ollama
       const stream = await ollamaClient.chatStream({
         model: modelName,
-        messages: messages
+        messages,
+        stream: true
       });
 
+      // Process the stream
       for await (const chunk of stream) {
-        console.log(`[POST /api/models/${modelName}/chat/stream] Sending chunk:`, chunk);
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
-      console.log(`[POST /api/models/${modelName}/chat/stream] Stream completed`);
+
       res.end();
     } catch (error) {
-      console.error(`[POST /api/models/${modelName}/chat/stream] Error:`, error);
+      console.error('Error in streaming chat:', error);
       if (!res.headersSent) {
-        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process streaming chat request' } });
-      } else {
-        res.write(`data: ${JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process streaming chat request' } })}\n\n`);
-        res.end();
+        res.status(500).json({
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to process chat request'
+          }
+        });
       }
     }
   });
