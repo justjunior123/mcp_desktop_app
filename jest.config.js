@@ -32,9 +32,21 @@ module.exports = {
   ],
   projects: [
     {
-      displayName: 'node',
+      displayName: 'unit',
       testEnvironment: 'node',
-      testMatch: ['**/tests/**/*.test.ts', '**/tests/**/*.spec.ts'],
+      testMatch: ['**/tests/unit/**/*.test.ts', '**/tests/unit/**/*.spec.ts'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.node.js'],
+      transform: {
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          tsconfig: 'tsconfig.json',
+          useESM: false
+        }]
+      }
+    },
+    {
+      displayName: 'integration',
+      testEnvironment: 'node',
+      testMatch: ['**/tests/integration/**/*.test.ts', '**/tests/integration/**/*.spec.ts'],
       setupFilesAfterEnv: ['<rootDir>/jest.setup.node.js'],
       transform: {
         '^.+\\.(ts|tsx)$': ['ts-jest', {
@@ -84,5 +96,6 @@ module.exports = {
       }
     }
   ],
-  testTimeout: 120000 // Global timeout of 2 minutes
+  testTimeout: 30000, // Global timeout of 2 minutes
+  maxWorkers: 1 // Run tests sequentially
 }; 

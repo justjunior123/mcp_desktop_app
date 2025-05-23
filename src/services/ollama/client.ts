@@ -9,6 +9,8 @@ import {
 } from './types';
 import fetch from 'node-fetch';
 import { Readable } from 'stream';
+import path from 'path';
+import fs from 'fs';
 
 export class OllamaError extends Error {
   constructor(message: string, public statusCode?: number) {
@@ -65,12 +67,25 @@ export class OllamaClient {
         body: truncatedBody
       });
 
+      // Create headers as a plain object
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Merge any additional headers
+      if (options.headers) {
+        if (options.headers instanceof Headers) {
+          options.headers.forEach((value, key) => {
+            headers[key] = value;
+          });
+        } else if (typeof options.headers === 'object') {
+          Object.assign(headers, options.headers);
+        }
+      }
+
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers,
       });
 
       const text = await response.text();
@@ -159,23 +174,36 @@ export class OllamaClient {
 
   async listModels(): Promise<{ models: OllamaModelInfo[] }> {
     try {
-      // Get raw response first to see what we're dealing with
-      const response = await fetch(`${this.baseUrl}/api/tags`);
-      const text = await response.text();
-      console.log('Raw /api/tags response:', text);
+      const data = await this.request<{ models: any[] }>('/api/tags');
       
-      const data = JSON.parse(text);
-      
-      // Transform the response to handle BigInt
-      if (Array.isArray(data)) {
-        return { models: data.map(this.transformModelInfo) };
+      if (!data || !Array.isArray(data.models)) {
+        throw new OllamaError('Invalid response format from /api/tags');
       }
       
-      if (data && Array.isArray(data.models)) {
-        return { models: data.models.map(this.transformModelInfo) };
-      }
-      
-      throw new OllamaError('Invalid response format from /api/tags');
+      return {
+        models: data.models.map(model => ({
+          name: model.name,
+          size: BigInt(model.size || 0),
+          digest: model.digest || '',
+          format: model.format || 'gguf',
+          family: model.family || 'unknown',
+          parameters: {
+            architecture: model.architecture || 'llama',
+            parameter_size: model.parameter_size || '7.2B',
+            context_length: model.context_length || 32768,
+            embedding_length: model.embedding_length || 4096,
+            quantization: model.quantization || 'Q4_0',
+            capabilities: model.capabilities || ['completion', 'tools'],
+            stop_sequences: model.stop || ['[INST]', '[/INST]'],
+            families: model.families || [],
+            quantization_level: model.quantization_level || undefined,
+            parent_model: model.parent_model || '',
+            format: model.format || 'gguf',
+            family: model.family || 'unknown',
+            license: model.license || 'Apache License Version 2.0, January 2004'
+          }
+        }))
+      };
     } catch (error) {
       console.error('Error in listModels:', error);
       throw error instanceof OllamaError ? error : new OllamaError('Failed to list models');
@@ -202,39 +230,37 @@ export class OllamaClient {
       throw new OllamaError(`HTTP error ${response.status}`, response.status);
     }
 
-    if (!response.body) {
-      throw new OllamaError('No response body');
-    }
+    const text = await response.text();
+    const lines = text.split('\n').filter(Boolean);
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
+    let success = false;
+    let error = null;
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(Boolean);
-
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            // Log progress updates
-            if (data.status) {
-              console.log(`[OllamaClient] Pull progress: ${data.status}`);
-            }
-            // If we get a final success message, we're done
-            if (data.status === 'success') {
-              return;
-            }
-          } catch (parseError) {
-            console.warn(`[OllamaClient] Failed to parse pull response line: ${line}`);
+    for (const line of lines) {
+      try {
+        const data = JSON.parse(line);
+        // Log progress updates
+        if (data.status) {
+          console.log(`[OllamaClient] Pull progress: ${data.status}`);
+          if (data.status === 'success') {
+            success = true;
           }
         }
+        // Check for errors
+        if (data.error) {
+          error = data.error;
+        }
+      } catch (parseError) {
+        console.warn(`[OllamaClient] Failed to parse pull response line: ${line}`);
       }
-    } finally {
-      reader.releaseLock();
+    }
+
+    if (error) {
+      throw new OllamaError(`Model pull failed: ${error}`);
+    }
+
+    if (!success) {
+      throw new OllamaError('Model pull did not complete successfully');
     }
   }
 
@@ -283,97 +309,134 @@ export class OllamaClient {
   }
 
   async chat(request: OllamaChatRequest): Promise<OllamaChatResponse> {
-    return this.request('/api/chat', {
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(request),
     });
+
+    if (!response.ok) {
+      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+    }
+
+    const text = await response.text();
+    const lines = text.split('\n').filter(Boolean);
+    let lastResponse: OllamaChatResponse | null = null;
+
+    for (const line of lines) {
+      try {
+        const data = JSON.parse(line);
+        if (data.done) {
+          lastResponse = data;
+        }
+      } catch (parseError) {
+        console.warn(`[OllamaClient] Failed to parse chat response line: ${line}`);
+      }
+    }
+
+    if (!lastResponse) {
+      throw new OllamaError('No valid response received from chat endpoint');
+    }
+
+    return lastResponse;
   }
 
   async *chatStream(request: OllamaChatRequest): AsyncGenerator<OllamaChatResponse> {
-    const CHUNK_SIZE_WARNING_THRESHOLD = 1024 * 1024; // 1MB
-    const startTime = Date.now();
-    let totalBytes = 0;
+    const logFile = path.join(process.cwd(), 'logs', 'ollama-client.log');
+    const logMessage = (message: string, meta?: any) => {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        message,
+        ...(meta ? { meta } : {})
+      };
+      fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+    };
+
+    logMessage('Starting chat stream request', {
+      model: request.model,
+      messageCount: request.messages.length,
+      stream: true
+    });
+
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ...request, stream: true }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logMessage('Chat stream request failed', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+      throw new OllamaError(`HTTP error ${response.status}: ${errorText}`, response.status);
+    }
+
+    if (!response.body) {
+      logMessage('No response body received');
+      throw new OllamaError('No response body');
+    }
+
+    // Cast to unknown first to avoid TypeScript errors
+    const stream = response.body as unknown as ReadableStream<Uint8Array>;
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
     let chunkCount = 0;
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ...request, stream: true }),
-      });
-
-      if (!response.ok) {
-        throw new OllamaError(`HTTP error ${response.status}`, response.status);
-      }
-
-      if (!response.body) {
-        throw new OllamaError('No response body');
-      }
-
-      let buffer = '';
-      for await (const chunk of response.body as any) {
-        const chunkStr = chunk.toString();
-        const chunkSize = chunkStr.length;
-        totalBytes += chunkSize;
-        chunkCount++;
-
-        // Log warning for large chunks
-        if (chunkSize > CHUNK_SIZE_WARNING_THRESHOLD) {
-          console.warn(`[OllamaClient] Large chunk received: ${chunkSize} bytes`);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          logMessage('Stream reading completed', { totalChunks: chunkCount });
+          break;
         }
 
-        buffer += chunkStr;
+        buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const data = JSON.parse(line);
-              yield data as OllamaChatResponse;
-            } catch (e) {
-              console.error('[OllamaClient] Failed to parse chunk:', {
-                error: e instanceof Error ? e.message : String(e),
-                line: line.length > 100 ? line.slice(0, 100) + '...' : line
-              });
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            chunkCount++;
+            logMessage('Processing chunk', {
+              chunkNumber: chunkCount,
+              done: data.done,
+              contentLength: data.message?.content?.length
+            });
+
+            if (data.error) {
+              logMessage('Error in chunk', { error: data.error });
+              throw new OllamaError(data.error);
             }
+            yield data;
+          } catch (parseError) {
+            logMessage('Failed to parse chunk', {
+              error: parseError instanceof Error ? parseError.message : String(parseError),
+              line
+            });
           }
         }
       }
-
-      // Process any remaining data in the buffer
-      if (buffer.trim()) {
-        try {
-          const data = JSON.parse(buffer);
-          yield data as OllamaChatResponse;
-        } catch (e) {
-          console.error('[OllamaClient] Failed to parse final chunk:', {
-            error: e instanceof Error ? e.message : String(e),
-            buffer: buffer.length > 100 ? buffer.slice(0, 100) + '...' : buffer
-          });
-        }
-      }
-
-      // Log stream completion statistics
-      const duration = Date.now() - startTime;
-      console.log('[OllamaClient] Stream completed:', {
-        duration: `${duration}ms`,
-        totalChunks: chunkCount,
-        totalBytes,
-        averageChunkSize: Math.round(totalBytes / chunkCount),
-        model: request.model
-      });
     } catch (error) {
-      console.error('[OllamaClient] Stream error:', {
+      logMessage('Error during stream processing', {
         error: error instanceof Error ? error.message : String(error),
-        model: request.model,
-        duration: `${Date.now() - startTime}ms`,
-        totalChunks: chunkCount,
-        totalBytes
+        stack: error instanceof Error ? error.stack : undefined,
+        chunkCount
       });
       throw error;
+    } finally {
+      reader.releaseLock();
+      logMessage('Stream processing completed', { totalChunks: chunkCount });
     }
   }
 

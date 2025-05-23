@@ -12,11 +12,13 @@ import { OllamaClient } from '../src/services/ollama/client';
 import { McpService } from '../src/services/mcp/service';
 import { OllamaChatMessage } from '../src/services/ollama/types';
 import fs from 'fs';
+import path from 'path';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
 let mcpService: McpService | null = null;
-const API_PORT = parseInt(process.env.API_PORT || '3100', 10);
+const isTest = process.env.NODE_ENV === 'test';
+const API_PORT = isTest ? 3101 : parseInt(process.env.API_PORT || '3100', 10);
 const API_HOST = process.env.API_HOST || '0.0.0.0';
 
 // Allow list of origins - can be configured via environment variables
@@ -51,7 +53,6 @@ const notFoundHandler = (req: Request, res: Response) => {
   });
 };
 
-const isTest = process.env.NODE_ENV === 'test';
 const ollamaClient = new OllamaClient();
 const modelManager = new OllamaModelManager(prisma, ollamaClient);
 
@@ -219,30 +220,98 @@ export async function setupServer() {
   });
 
   app.post('/api/models/:name/chat/stream', async (req, res) => {
+    const logFile = path.join(process.cwd(), 'logs', 'stream-chat.log');
+    const logMessage = (message: string, meta?: any) => {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        message,
+        ...(meta ? { meta } : {})
+      };
+      fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+    };
+
+    // Set headers for SSE early
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+
     try {
+      logMessage('Stream chat request received', {
+        model: req.params.name,
+        messageCount: req.body.messages?.length,
+        headers: req.headers
+      });
+
       const { messages } = req.body;
       if (!messages || !Array.isArray(messages)) {
-        res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } });
+        logMessage('Invalid request: missing or invalid messages array', { body: req.body });
+        res.write(`data: ${JSON.stringify({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } })}\n\n`);
+        res.end();
         return;
       }
 
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
+      // Check if model exists before starting stream
+      try {
+        logMessage('Checking if model exists', { model: req.params.name });
+        await modelManager.getModel(req.params.name);
+        logMessage('Model found and verified');
+      } catch (error) {
+        logMessage('Model check failed', { 
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        if (error && typeof error === 'object' && 'message' in error && (error as any).message.includes('not found')) {
+          res.write(`data: ${JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Model not found' } })}\n\n`);
+          res.end();
+          return;
+        }
+        throw error;
+      }
+
+      logMessage('Starting chat stream', { 
+        model: req.params.name,
+        messageCount: messages.length
+      });
 
       const stream = ollamaClient.chatStream({
         model: req.params.name,
         messages: messages
       });
 
+      let chunkCount = 0;
       // Write each chunk as an SSE event
       for await (const chunk of stream) {
+        chunkCount++;
+        logMessage('Streaming chunk', { 
+          chunkNumber: chunkCount,
+          chunkSize: JSON.stringify(chunk).length,
+          done: chunk.done
+        });
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
+
+      logMessage('Stream completed', { 
+        totalChunks: chunkCount,
+        model: req.params.name
+      });
       res.end();
     } catch (error) {
-      console.error('Error in streaming chat:', error);
-      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process streaming chat request' } });
+      logMessage('Error in streaming chat', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        model: req.params.name
+      });
+
+      // Send error as SSE event
+      res.write(`data: ${JSON.stringify({ 
+        error: { 
+          code: 'INTERNAL_ERROR', 
+          message: 'Failed to process streaming chat request' 
+        }
+      })}\n\n`);
+      res.end();
     }
   });
 

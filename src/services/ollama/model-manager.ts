@@ -3,30 +3,55 @@ import { OllamaClient } from './client';
 import { OllamaModelInfo, OllamaModelData } from './types';
 import fs from 'fs';
 import path from 'path';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('ollama-model-manager');
 
 const logFile = path.join(process.cwd(), 'parameters-debug.log');
 function logParameters(context: string, value: unknown) {
   fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${context}: ${typeof value} ${JSON.stringify(value, null, 2)}\n`);
 }
 
+// Custom JSON stringify replacer to handle BigInt
+function jsonReplacer(_key: string, value: any) {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return value;
+}
+
 // Utility to ensure parameters is always an object
 function sanitizeModelData(modelData: any): any {
-  prodLog('info', 'sanitizeModelData: entry', { inputType: typeof modelData, hasParameters: !!modelData?.parameters, hasDetails: !!modelData?.details });
+  logger.debug('sanitizeModelData: entry', { 
+    inputType: typeof modelData, 
+    hasParameters: !!modelData?.parameters, 
+    hasDetails: !!modelData?.details,
+    hasModelInfo: !!modelData?.model_info,
+    rawData: JSON.stringify(modelData, jsonReplacer)
+  });
   
   // Prefer parameters if it's an object, else details if it's an object, else {}
   let parameters = {};
-  let name = modelData.name;
-  if (!name && modelData.model_info && typeof modelData.model_info === 'object' && modelData.model_info.name) {
-    name = modelData.model_info.name;
-    prodLog('info', 'sanitizeModelData: using name from model_info', { name });
+  let name = modelData?.name;
+  
+  // Try to get name from various possible locations
+  if (!name) {
+    if (modelData?.model_info?.name) {
+      name = modelData.model_info.name;
+      logger.debug('sanitizeModelData: using name from model_info', { name });
+    } else if (modelData?.details?.name) {
+      name = modelData.details.name;
+      logger.debug('sanitizeModelData: using name from details', { name });
+    }
   }
-  if (modelData && typeof modelData === 'object') {
+
+  if (modelData) {
     if (modelData.parameters && typeof modelData.parameters === 'object' && !Array.isArray(modelData.parameters)) {
       parameters = modelData.parameters;
-      prodLog('info', 'sanitizeModelData: using parameters object');
+      logger.debug('sanitizeModelData: using parameters object');
     } else if (modelData.details && typeof modelData.details === 'object' && !Array.isArray(modelData.details)) {
       parameters = modelData.details;
-      prodLog('info', 'sanitizeModelData: using details object');
+      logger.debug('sanitizeModelData: using details object');
     } else if (modelData.model_info && typeof modelData.model_info === 'object') {
       // Extract key model info fields
       parameters = {
@@ -44,28 +69,48 @@ function sanitizeModelData(modelData: any): any {
         family: modelData.family || 'unknown',
         license: modelData.license || 'Apache License Version 2.0, January 2004'
       };
-      prodLog('info', 'sanitizeModelData: using model_info object');
+      logger.debug('sanitizeModelData: using model_info object');
     } else {
-      prodLog('info', 'sanitizeModelData: WARNING - invalid input type', { type: typeof modelData });
+      // If we have no valid parameters object, create a default one
+      parameters = {
+        architecture: 'llama',
+        parameter_size: '7.2B',
+        context_length: 32768,
+        embedding_length: 4096,
+        quantization: 'Q4_0',
+        capabilities: ['completion', 'tools'],
+        stop_sequences: ['[INST]', '[/INST]'],
+        families: [],
+        format: 'gguf',
+        family: 'unknown',
+        license: 'Apache License Version 2.0, January 2004'
+      };
+      logger.debug('sanitizeModelData: using default parameters');
     }
-  } else {
-    prodLog('info', 'sanitizeModelData: WARNING - invalid input type', { type: typeof modelData });
   }
   
   const result = {
     name,
     ...modelData,
     parameters: parameters,
-    size: typeof modelData.size !== 'undefined' ? modelData.size : BigInt(0),
-    digest: typeof modelData.digest !== 'undefined' ? modelData.digest : '',
+    size: typeof modelData?.size !== 'undefined' ? modelData.size : BigInt(0),
+    digest: modelData?.digest || '',
+    format: modelData?.format || 'gguf',
+    family: modelData?.family || 'unknown',
+    status: modelData?.status || 'NOT_DOWNLOADED',
+    isDownloaded: modelData?.isDownloaded || false
   };
-  prodLog('info', 'sanitizeModelData: result', { 
+
+  logger.debug('sanitizeModelData: result', { 
     hasName: !!result.name,
     name: result.name,
     hasSize: !!result.size,
     hasParameters: !!result.parameters,
-    parametersType: typeof result.parameters
+    parametersType: typeof result.parameters,
+    status: result.status,
+    isDownloaded: result.isDownloaded
   });
+  
   return result;
 }
 
@@ -75,7 +120,7 @@ type PrismaClientWithModels = PrismaClient & {
 };
 
 function prodLog(level: 'info' | 'error', message: string, meta?: any) {
-  function replacer(_key: string, value: any) {
+  function jsonReplacer(_key: string, value: any) {
     if (typeof value === 'bigint') {
       return value.toString();
     }
@@ -87,7 +132,7 @@ function prodLog(level: 'info' | 'error', message: string, meta?: any) {
     message,
     ...(meta ? { meta } : {})
   };
-  const line = JSON.stringify(logEntry, replacer);
+  const line = JSON.stringify(logEntry, jsonReplacer);
   fs.appendFileSync('parameters-debug.log', line + '\n');
   if (level === 'error') {
     console.error(line);
@@ -195,13 +240,38 @@ export class OllamaModelManager {
   async getModel(name: string) {
     prodLog('info', 'getModel: entry', { name });
     try {
-      const model = await this.prisma.ollamaModel.findUnique({
+      // First try to get the model from the database
+      let model = await this.prisma.ollamaModel.findUnique({
         where: { name },
         include: { configuration: true }
       });
       
+      // If model not found, try syncing models first
       if (!model) {
-        throw new Error('Model not found');
+        prodLog('info', 'getModel: model not found, attempting sync', { name });
+        await this.syncModels();
+        
+        // Try getting the model again after sync
+        model = await this.prisma.ollamaModel.findUnique({
+          where: { name },
+          include: { configuration: true }
+        });
+        
+        if (!model) {
+          // If still not found, try pulling the model
+          prodLog('info', 'getModel: model not found after sync, attempting pull', { name });
+          await this.pullModel(name);
+          
+          // Try getting the model one more time
+          model = await this.prisma.ollamaModel.findUnique({
+            where: { name },
+            include: { configuration: true }
+          });
+          
+          if (!model) {
+            throw new Error('Model not found after sync and pull');
+          }
+        }
       }
 
       // Transform the model into the expected format
@@ -254,95 +324,57 @@ export class OllamaModelManager {
   }
 
   async pullModel(name: string) {
-    prodLog('info', 'pullModel: entry', { name });
-    
-    // Start download
+    logger.info('pullModel: entry', { name });
     try {
+      // Create or update the model record first
       await this.prisma.ollamaModel.upsert({
         where: { name },
         create: {
           name,
-          size: 0,
-          digest: '',
-          format: 'unknown',
-          family: 'unknown',
-          parameters: null,
           status: 'DOWNLOADING',
-          downloadProgress: 0
+          isDownloaded: false,
+          parameters: {},
+          format: 'gguf',
+          family: 'unknown',
+          size: BigInt(0), // Add default size
+          digest: '' // Add default digest
         },
         update: {
           status: 'DOWNLOADING',
-          downloadProgress: 0
+          isDownloaded: false
         }
       });
-      prodLog('info', 'pullModel: database updated for download start');
-    } catch (dbError) {
-      prodLog('error', 'pullModel: database update failed', { 
-        error: dbError instanceof Error ? dbError.stack || dbError.message : dbError,
-        name 
-      });
-      throw dbError;
-    }
 
-    try {
-      // Pull model from Ollama
-      prodLog('info', 'pullModel: starting Ollama pull', { name });
+      // Pull the model from Ollama
+      logger.info('pullModel: starting Ollama pull', { name });
       await this.ollamaClient.pullModel(name);
-      prodLog('info', 'pullModel: Ollama pull completed');
-      
-      prodLog('info', 'pullModel: fetching model info', { name });
-      let modelInfo;
-      try {
-        modelInfo = await this.ollamaClient.getModel(name);
-        prodLog('info', 'pullModel: model info retrieved', { 
-          hasName: !!modelInfo?.name,
-          hasParameters: !!modelInfo?.parameters,
-          hasError: !!modelInfo?.error,
-          hasModelInfo: !!modelInfo?.model_info
-        });
-        
-        if (!modelInfo) {
-          prodLog('error', 'pullModel: invalid model info', { modelInfo });
-          throw new Error(`Ollama getModel did not return a valid model for '${name}'`);
-        }
-        if (modelInfo.error && typeof modelInfo.error === 'string') {
-          prodLog('error', 'pullModel: model has error', { error: modelInfo.error });
-          throw new Error(`Model '${name}' not found in Ollama.`);
-        }
-      } catch (getModelError) {
-        prodLog('error', 'pullModel: getModel failed', { 
-          error: getModelError instanceof Error ? getModelError.stack || getModelError.message : getModelError,
-          name 
-        });
-        if (getModelError instanceof Error && getModelError.message?.includes('not found')) {
-          const notFoundError = new Error(`Model '${name}' not found in Ollama.`);
-          (notFoundError as any).status = 404;
-          throw notFoundError;
-        }
-        throw getModelError;
-      }
-      
-      // Update database with complete info
-      prodLog('info', 'pullModel: sanitizing model info');
-      if (!modelInfo.name) {
-        prodLog('info', 'pullModel: modelInfo.name missing, setting from argument', { name });
-        modelInfo.name = name;
-      }
-      const sanitizedModelInfo = sanitizeModelData(modelInfo);
-      prodLog('info', 'pullModel: updating database with model info');
-      await this.upsertModel(sanitizedModelInfo);
+      logger.info('pullModel: Ollama pull completed', { name });
 
-      // Return the transformed model
-      const model = await this.getModel(name);
-      prodLog('info', 'pullModel: success', { name });
-      return model;
-    } catch (error) {
-      prodLog('error', 'pullModel: operation failed', { 
-        error: error instanceof Error ? error.stack || error.message : error,
-        name 
-      });
+      // Get the model info from Ollama
+      logger.info('pullModel: fetching model info', { name });
+      const modelInfo = await this.ollamaClient.getModel(name);
       
-      // Update database with error state
+      if (!modelInfo) {
+        throw new Error(`Failed to get model info for ${name}`);
+      }
+
+      // Update the model record with the pulled info
+      const modelData: OllamaModelData = {
+        name,
+        size: modelInfo.size,
+        digest: modelInfo.digest,
+        format: modelInfo.format || 'gguf',
+        family: modelInfo.family || 'unknown',
+        parameters: modelInfo.parameters || {},
+        isDownloaded: true,
+        status: 'READY'
+      };
+
+      await this.upsertModel(modelData);
+      logger.info('pullModel: success', { name });
+      return modelData;
+    } catch (error) {
+      // Update the model record with error status
       try {
         await this.prisma.ollamaModel.update({
           where: { name },
@@ -351,13 +383,19 @@ export class OllamaModelManager {
             error: error instanceof Error ? error.message : 'Unknown error'
           }
         });
-        prodLog('info', 'pullModel: database updated with error state');
       } catch (dbError) {
-        prodLog('error', 'pullModel: failed to update error state', { 
-          error: dbError instanceof Error ? dbError.stack || dbError.message : dbError,
-          originalError: error instanceof Error ? error.stack || error.message : error
+        logger.error('pullModel: failed to update error status', { 
+          name, 
+          error: dbError instanceof Error ? dbError.message : String(dbError),
+          originalError: error instanceof Error ? error.message : String(error)
         });
       }
+      
+      logger.error('pullModel: error', { 
+        name,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw error;
     }
   }
