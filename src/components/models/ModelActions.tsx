@@ -20,6 +20,7 @@ export const ModelActions: React.FC<ModelActionsProps> = ({
   const handlePull = async (modelName: string) => {
     setStatus('DOWNLOADING');
     setProgress(0);
+    onPull(modelName);
 
     try {
       const response = await fetch(`/api/models/${modelName}/pull`);
@@ -47,8 +48,6 @@ export const ModelActions: React.FC<ModelActionsProps> = ({
           }
         }
       }
-
-      onPull(modelName);
     } catch (error) {
       setStatus('ERROR');
       console.error('Error pulling model:', error);
@@ -82,18 +81,12 @@ export const ModelActions: React.FC<ModelActionsProps> = ({
           </button>
         </>
       )}
-      {status === 'DOWNLOADING' && (
-        <div className="flex items-center gap-2">
-          <div className="w-32 bg-gray-200 rounded-full h-2.5">
-            <div
-              className="bg-blue-500 h-2.5 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-          <span>{Math.round(progress)}%</span>
+      {(status === 'DOWNLOADING' || model.status === 'DOWNLOADING') && (
+        <div role="status" className="animate-spin">
+          Downloading...
         </div>
       )}
-      {status === 'ERROR' && (
+      {(status === 'ERROR' || model.status === 'ERROR') && (
         <div className="text-red-500">
           Error: {model.error || 'Unknown error'}
         </div>
