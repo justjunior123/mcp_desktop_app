@@ -13,6 +13,8 @@ import { McpService } from '../src/services/mcp/service';
 import { OllamaChatMessage } from '../src/services/ollama/types';
 import fs from 'fs';
 import path from 'path';
+import { createLogger } from '../src/utils/logger';
+import { serializeBigInt } from '../src/utils/serialization';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
@@ -21,6 +23,8 @@ const isTest = process.env.NODE_ENV === 'test';
 const API_PORT = isTest ? 3101 : parseInt(process.env.API_PORT || '3100', 10);
 const API_HOST = process.env.API_HOST || '0.0.0.0';
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+
+const logger = createLogger('server');
 
 // Allow list of origins - can be configured via environment variables
 const ALLOWED_ORIGINS = [
@@ -56,19 +60,6 @@ const notFoundHandler = (req: Request, res: Response) => {
 
 const ollamaClient = new OllamaClient();
 const modelManager = new OllamaModelManager(prisma, ollamaClient);
-
-// Utility to safely serialize BigInt values to strings
-function serializeBigInt(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === 'bigint') return obj.toString();
-  if (Array.isArray(obj)) return obj.map(serializeBigInt);
-  if (typeof obj === 'object') {
-    return Object.fromEntries(
-      Object.entries(obj).map(([key, value]) => [key, serializeBigInt(value)])
-    );
-  }
-  return obj;
-}
 
 export async function setupServer() {
   const app = express();
@@ -338,127 +329,82 @@ export async function setupServer() {
     }
   });
 
-  // Chat endpoints
+  // Chat with a model
   app.post('/api/models/:name/chat', async (req, res) => {
     const modelName = req.params.name;
-    console.log(`[POST /api/models/${modelName}/chat] Starting chat request`);
-    
+    const { messages } = req.body;
+    logger.info(`[POST /api/models/${modelName}/chat] Chat request`);
+
     try {
-      const { messages } = req.body;
       if (!messages || !Array.isArray(messages)) {
-        console.log(`[POST /api/models/${modelName}/chat] Invalid messages format`);
-        res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } });
-        return;
+        throw new Error('Missing or invalid messages array');
       }
 
-      // Check if model exists first
-      try {
-        console.log(`[POST /api/models/${modelName}/chat] Verifying model exists`);
-        await modelManager.getModel(modelName);
-      } catch (error) {
-        console.error(`[POST /api/models/${modelName}/chat] Model verification failed:`, error);
-        if (error instanceof Error && error.message === 'Model not found') {
-          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
-          return;
-        }
-        throw error;
+      const modelInfo = await modelManager.getModel(modelName);
+      if (!modelInfo) {
+        throw new Error('Model not found');
       }
 
-      console.log(`[POST /api/models/${modelName}/chat] Starting chat`);
-      try {
-        const response = await ollamaClient.chat({
-          model: modelName,
-          messages: messages
-        });
-        console.log(`[POST /api/models/${modelName}/chat] Chat completed`);
-        res.json({ data: response });
-      } catch (error) {
-        console.error(`[POST /api/models/${modelName}/chat] Ollama chat error:`, error);
-        if (error instanceof Error) {
-          if (error.message.includes('ECONNREFUSED')) {
-            res.status(503).json({ 
-              error: { 
-                code: 'SERVICE_UNAVAILABLE', 
-                message: 'Ollama server is not available. Please ensure it is running.' 
-              } 
-            });
-            return;
-          }
-          if (error.message.includes('timeout')) {
-            res.status(504).json({ 
-              error: { 
-                code: 'GATEWAY_TIMEOUT', 
-                message: 'Request to Ollama server timed out' 
-              } 
-            });
-            return;
-          }
-        }
-        throw error;
-      }
+      const response = await modelManager.chat(modelName, messages);
+      res.json({ data: response });
     } catch (error) {
-      console.error(`[POST /api/models/${modelName}/chat] Error:`, error);
-      if (error instanceof Error && error.message === 'Model not found') {
-        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
-        return;
+      logger.error(`[POST /api/models/${modelName}/chat] Error:`, error);
+      if (!res.headersSent) {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
+          } else if (error.message.includes('Missing or invalid messages array')) {
+            res.status(400).json({ error: { code: 'INVALID_REQUEST', message: error.message } });
+          } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Chat request failed' } });
+          }
+        } else {
+          res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Chat request failed' } });
+        }
       }
-      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process chat request' } });
     }
   });
 
+  // Streaming chat with a model
   app.post('/api/models/:name/chat/stream', async (req, res) => {
     const modelName = req.params.name;
     const { messages } = req.body;
-
-    if (!messages || !Array.isArray(messages)) {
-      res.status(400).json({
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'Messages array is required'
-        }
-      });
-      return;
-    }
+    logger.info(`[POST /api/models/${modelName}/chat/stream] Streaming chat request`);
 
     try {
-      const model = await modelManager.getModel(modelName);
-      if (!model) {
-        res.status(404).json({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Model not found'
-          }
-        });
-        return;
+      if (!messages || !Array.isArray(messages)) {
+        throw new Error('Missing or invalid messages array');
       }
 
-      // Set headers for SSE
+      const modelInfo = await modelManager.getModel(modelName);
+      if (!modelInfo) {
+        throw new Error('Model not found');
+      }
+
+      // Set up SSE
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Get the stream from Ollama
-      const stream = await ollamaClient.chatStream({
-        model: modelName,
-        messages,
-        stream: true
-      });
-
-      // Process the stream
-      for await (const chunk of stream) {
+      await modelManager.chat(modelName, messages, undefined, (chunk: any) => {
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-      }
+      });
 
       res.end();
     } catch (error) {
-      console.error('Error in streaming chat:', error);
+      logger.error(`[POST /api/models/${modelName}/chat/stream] Error:`, error);
       if (!res.headersSent) {
-        res.status(500).json({
-          error: {
-            code: 'INTERNAL_ERROR',
-            message: error instanceof Error ? error.message : 'Failed to process chat request'
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
+          } else if (error.message.includes('Missing or invalid messages array')) {
+            res.status(400).json({ error: { code: 'INVALID_REQUEST', message: error.message } });
+          } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Chat request failed' } });
           }
-        });
+        } else {
+          res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Chat request failed' } });
+        }
       }
     }
   });
@@ -479,6 +425,35 @@ export async function setupServer() {
 
   app.get('/api/prompts/:name', (req, res) => {
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Prompt not found' } });
+  });
+
+  // Pull a model
+  app.post('/api/models/:name/pull', async (req, res) => {
+    const modelName = req.params.name;
+    logger.info(`[POST /api/models/${modelName}/pull] Starting model pull`);
+
+    try {
+      // Set up SSE
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const model = await modelManager.pullModel(modelName, (status, progress) => {
+        res.write(`data: ${JSON.stringify({ status, progress })}\n\n`);
+      });
+
+      res.write(`data: ${JSON.stringify({ status: 'success', model: serializeBigInt(model) })}\n\n`);
+      res.end();
+    } catch (error) {
+      logger.error(`[POST /api/models/${modelName}/pull] Error pulling model:`, error);
+      if (!res.headersSent) {
+        if (error instanceof Error && error.message.includes('404')) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
+        } else {
+          res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to pull model' } });
+        }
+      }
+    }
   });
 
   // Add error logging middleware

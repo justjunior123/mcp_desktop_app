@@ -57,7 +57,7 @@ export class OllamaBridge {
   private async initializeServer() {
     // Register base tools that don't depend on specific models
     this.server.tool('listModels', {}, async () => {
-      const { models } = await this.ollamaClient.listModels();
+      const models = await this.ollamaClient.listModels();
       return {
         content: [{
           type: 'text',
@@ -84,7 +84,7 @@ export class OllamaBridge {
 
   private async updateModelTools() {
     try {
-      const { models } = await this.ollamaClient.listModels();
+      const models = await this.ollamaClient.listModels();
       
       for (const model of models) {
         if (!this.models.has(model.name)) {
@@ -241,6 +241,16 @@ export class OllamaBridge {
       console.log('Ollama MCP bridge stopped successfully');
     } catch (error) {
       console.error('Error stopping Ollama MCP bridge:', error);
+      throw error;
+    }
+  }
+
+  async listModels(): Promise<OllamaModelInfo[]> {
+    try {
+      const models = await this.ollamaClient.listModels();
+      return models;
+    } catch (error) {
+      console.error('Failed to list models:', error);
       throw error;
     }
   }

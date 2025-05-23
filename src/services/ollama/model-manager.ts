@@ -1,9 +1,10 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { OllamaClient } from './client';
-import { OllamaModelInfo, OllamaModelData } from './types';
+import { OllamaModelInfo, OllamaModelData, OllamaChatMessage } from './types';
 import fs from 'fs';
 import path from 'path';
 import { createLogger } from '../../utils/logger';
+import { OllamaError } from './errors';
 
 const logger = createLogger('ollama-model-manager');
 
@@ -156,13 +157,13 @@ export class OllamaModelManager {
     }
 
     try {
-      const response = await this.ollamaClient.listModels();
+      const models = await this.ollamaClient.listModels();
       
-      if (!response || !Array.isArray(response.models)) {
+      if (!models || !Array.isArray(models)) {
         throw new Error('Invalid response from Ollama API');
       }
       
-      for (const model of response.models) {
+      for (const model of models) {
         if (!model || !model.name) {
           console.warn('Skipping invalid model:', model);
           continue;
@@ -334,91 +335,106 @@ export class OllamaModelManager {
     }
   }
 
-  async pullModel(name: string, onProgress?: (status: string, progress?: number) => void) {
-    logger.info('pullModel: entry', { name });
+  private prodLog(level: 'info' | 'error', message: string, meta?: Record<string, any>) {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      module: 'ollama-model-manager',
+      message,
+      meta
+    };
+    const line = JSON.stringify(logEntry);
+    fs.appendFileSync('parameters-debug.log', line + '\n');
+    if (level === 'error') {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
+  }
+
+  async pullModel(name: string, onProgress?: (status: string, progress: number) => void): Promise<OllamaModelData> {
+    this.prodLog('info', 'pullModel: entry', { name });
+    
     try {
-      // Create or update the model record first
-      await this.prisma.ollamaModel.upsert({
+      // Check if model already exists
+      const existingModel = await this.getModel(name);
+      if (existingModel) {
+        this.prodLog('info', 'pullModel: model already exists', { name });
+        return existingModel;
+      }
+
+      // Create initial model record
+      const model = await this.prisma.ollamaModel.upsert({
         where: { name },
         create: {
           name,
-          status: 'DOWNLOADING',
-          isDownloaded: false,
-          parameters: {},
-          format: 'gguf',
-          family: 'unknown',
-          size: BigInt(0),
-          digest: '',
-          progress: 0
+          status: 'downloading',
+          downloadProgress: 0,
+          lastUsed: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date()
         },
         update: {
-          status: 'DOWNLOADING',
-          isDownloaded: false,
-          progress: 0
+          status: 'downloading',
+          downloadProgress: 0,
+          updatedAt: new Date()
         }
       });
 
-      // Pull the model from Ollama with progress tracking
-      logger.info('pullModel: starting Ollama pull', { name });
-      await this.ollamaClient.pullModel(name, async (status, progress) => {
-        // Update progress in database
-        await this.prisma.ollamaModel.update({
-          where: { name },
-          data: {
-            status: status === 'success' ? 'READY' : 'DOWNLOADING',
-            progress: progress || 0
-          }
-        });
-        onProgress?.(status, progress);
-      });
-      logger.info('pullModel: Ollama pull completed', { name });
+      this.prodLog('info', 'pullModel: starting Ollama pull', { name });
 
-      // Get the model info from Ollama
-      logger.info('pullModel: fetching model info', { name });
-      const modelInfo = await this.ollamaClient.getModel(name);
-      
-      if (!modelInfo) {
-        throw new Error(`Failed to get model info for ${name}`);
-      }
-
-      // Update the model record with the pulled info
-      const modelData: OllamaModelData = {
-        name,
-        size: modelInfo.size,
-        digest: modelInfo.digest,
-        format: modelInfo.format || 'gguf',
-        family: modelInfo.family || 'unknown',
-        parameters: modelInfo.parameters || {},
-        isDownloaded: true,
-        status: 'READY'
-      };
-
-      await this.upsertModel(modelData);
-      logger.info('pullModel: success', { name });
-      return modelData;
-    } catch (error) {
-      // Update the model record with error status
       try {
+        // Start the pull process
+        await this.ollamaClient.pullModel(name, (status, progress) => {
+          this.prodLog('info', 'pullModel: progress update', { name, status, progress });
+          onProgress?.(status, progress || 0);
+          
+          // Update progress in database
+          this.prisma.ollamaModel.update({
+            where: { name },
+            data: {
+              downloadProgress: progress || 0,
+              status: status === 'success' ? 'ready' : 'downloading',
+              updatedAt: new Date()
+            }
+          }).catch((error: Error) => {
+            this.prodLog('error', 'pullModel: error updating progress', { name, error });
+          });
+        });
+
+        // Verify model exists after pull
+        const modelInfo = await this.ollamaClient.getModel(name);
+        if (!modelInfo) {
+          throw new OllamaError('Failed to get model info after pull: Model not found');
+        }
+
+        // Update model record with success status
+        const updatedModel = await this.prisma.ollamaModel.update({
+          where: { name },
+          data: {
+            status: 'ready',
+            downloadProgress: 100,
+            updatedAt: new Date()
+          }
+        });
+
+        this.prodLog('info', 'pullModel: success', { name });
+        return updatedModel;
+      } catch (error) {
+        // Update model record with error status
         await this.prisma.ollamaModel.update({
           where: { name },
           data: {
-            status: 'ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error'
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error',
+            updatedAt: new Date()
           }
         });
-      } catch (dbError) {
-        logger.error('pullModel: failed to update error status', { 
-          name, 
-          error: dbError instanceof Error ? dbError.message : String(dbError),
-          originalError: error instanceof Error ? error.message : String(error)
-        });
+
+        throw error;
       }
-      
-      logger.error('pullModel: error', { 
-        name,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      });
+    } catch (error) {
+      this.prodLog('error', 'pullModel: error', { name, error });
       throw error;
     }
   }
@@ -476,5 +492,122 @@ export class OllamaModelManager {
     // Note: We don't delete from Ollama as there's no API for that
     // The model will be re-added on next sync if it still exists in Ollama
     prodLog('info', 'deleteModel: success', { name });
+  }
+
+  async chat(
+    modelName: string,
+    messages: OllamaChatMessage[],
+    options?: {
+      temperature?: number;
+      topP?: number;
+      topK?: number;
+      repeatPenalty?: number;
+      presencePenalty?: number;
+      frequencyPenalty?: number;
+      stop?: string[];
+      maxTokens?: number;
+      systemPrompt?: string;
+      contextWindow?: number;
+    },
+    onChunk?: (chunk: any) => void
+  ) {
+    this.prodLog('info', 'chat: entry', { modelName, messages, options });
+
+    try {
+      // Verify model exists and is ready
+      const model = await this.getModel(modelName);
+      if (!model) {
+        throw new Error('Model not found');
+      }
+
+      if (model.status !== 'ready') {
+        throw new Error('Model is not ready');
+      }
+
+      // Get model configuration
+      const config = await this.prisma.ollamaModelConfiguration.findUnique({
+        where: { modelName }
+      });
+
+      // Merge options with configuration
+      const mergedOptions = {
+        ...config,
+        ...options
+      };
+
+      // Call Ollama API
+      if (onChunk) {
+        // Stream response and invoke callback for each chunk
+        const stream = this.ollamaClient.chatStream({
+          model: modelName,
+          messages,
+          options: mergedOptions
+        });
+        for await (const chunk of stream) {
+          onChunk(chunk);
+        }
+        return;
+      }
+      return this.ollamaClient.chat({
+        model: modelName,
+        messages,
+        options: mergedOptions
+      });
+    } catch (error) {
+      this.prodLog('error', 'chat: error', { modelName, error });
+      throw error;
+    }
+  }
+
+  async *chatStream(
+    modelName: string,
+    messages: OllamaChatMessage[],
+    options?: {
+      temperature?: number;
+      topP?: number;
+      topK?: number;
+      repeatPenalty?: number;
+      presencePenalty?: number;
+      frequencyPenalty?: number;
+      stop?: string[];
+      maxTokens?: number;
+      systemPrompt?: string;
+      contextWindow?: number;
+    }
+  ) {
+    this.prodLog('info', 'chatStream: entry', { modelName, messages, options });
+
+    try {
+      // Verify model exists and is ready
+      const model = await this.getModel(modelName);
+      if (!model) {
+        throw new Error('Model not found');
+      }
+
+      if (model.status !== 'ready') {
+        throw new Error('Model is not ready');
+      }
+
+      // Get model configuration
+      const config = await this.prisma.ollamaModelConfiguration.findUnique({
+        where: { modelName }
+      });
+
+      // Merge options with configuration
+      const mergedOptions = {
+        ...config,
+        ...options
+      };
+
+      // Call Ollama API
+      return this.ollamaClient.chatStream({
+        model: modelName,
+        messages,
+        options: mergedOptions
+      });
+    } catch (error) {
+      this.prodLog('error', 'chatStream: error', { modelName, error });
+      throw error;
+    }
   }
 } 
