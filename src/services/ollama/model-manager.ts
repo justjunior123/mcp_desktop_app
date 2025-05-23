@@ -285,8 +285,16 @@ export class OllamaModelManager {
       });
       
       // Ensure we're throwing the correct error type
-      if (error instanceof Error && error.message === 'Model not found') {
-        throw new Error('Model not found');
+      if (error instanceof Error) {
+        if (error.message === 'Model not found') {
+          throw new Error('Model not found');
+        }
+        if (error.message.includes('ECONNREFUSED') || error.message.includes('connect')) {
+          throw new Error('Ollama service is not available');
+        }
+        if (error.message.includes('timeout')) {
+          throw new Error('Request to Ollama server timed out');
+        }
       }
       throw new Error('Failed to get model');
     }

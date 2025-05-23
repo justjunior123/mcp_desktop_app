@@ -183,8 +183,12 @@ export async function setupServer() {
 
   app.get('/api/models/:name', async (req, res) => {
     const modelName = req.params.name;
-    const logFile = path.join(process.cwd(), 'logs', 'api.log');
+    const logsDir = path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
     
+    const logFile = path.join(logsDir, 'api.log');
     const logMessage = (message: string, meta?: any) => {
       const logEntry = {
         timestamp: new Date().toISOString(),
@@ -193,30 +197,83 @@ export async function setupServer() {
         ...(meta ? { meta } : {})
       };
       fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+      console.log(`[GET /api/models/:name] ${message}`, meta || '');
     };
     
     logMessage('Attempting to get model', { modelName });
     
     try {
-      const model = await modelManager.getModel(modelName);
-      logMessage('Model found', { modelName });
-      res.json({ data: serializeBigInt(model) });
-    } catch (error) {
-      logMessage('Error getting model', { 
-        modelName,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      
-      if (error instanceof Error && error.message === 'Model not found') {
-        res.status(404).json({ 
+      // First check if the model exists in Ollama
+      const isHealthy = await ollamaClient.healthCheck();
+      if (!isHealthy) {
+        logMessage('Ollama service is not available');
+        res.status(503).json({ 
           error: {
-            code: 'NOT_FOUND',
-            message: 'Model not found'
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'Ollama service is not available'
           }
         });
         return;
       }
+
+      // Try to get the model from Ollama
+      logMessage('Calling modelManager.getModel', { modelName });
+      const model = await modelManager.getModel(modelName);
+      logMessage('Model found', { modelName, model });
+      res.json({ data: serializeBigInt(model) });
+    } catch (error) {
+      logMessage('Error getting model', { 
+        modelName,
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+          constructor: error.constructor.name
+        } : String(error)
+      });
       
+      if (error instanceof Error) {
+        logMessage('Error is instance of Error', {
+          message: error.message,
+          name: error.name,
+          constructor: error.constructor.name
+        });
+        
+        if (error.message === 'Model not found') {
+          logMessage('Returning 404 for Model not found');
+          res.status(404).json({ 
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Model not found'
+            }
+          });
+          return;
+        }
+        
+        if (error.message.includes('ECONNREFUSED') || error.message.includes('connect')) {
+          logMessage('Returning 503 for connection error');
+          res.status(503).json({ 
+            error: {
+              code: 'SERVICE_UNAVAILABLE',
+              message: 'Ollama service is not available'
+            }
+          });
+          return;
+        }
+        
+        if (error.message.includes('timeout')) {
+          logMessage('Returning 504 for timeout error');
+          res.status(504).json({ 
+            error: {
+              code: 'GATEWAY_TIMEOUT',
+              message: 'Request to Ollama server timed out'
+            }
+          });
+          return;
+        }
+      }
+      
+      logMessage('Returning 500 for unhandled error');
       res.status(500).json({ 
         error: {
           code: 'INTERNAL_ERROR',

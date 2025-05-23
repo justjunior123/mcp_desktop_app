@@ -15,13 +15,19 @@ Object.defineProperty(process.env, 'NODE_ENV', {
 // Mock Ollama service
 jest.mock('../../src/services/ollama/client', () => ({
   OllamaClient: jest.fn().mockImplementation(() => ({
-    getModel: jest.fn().mockResolvedValue({
-      name: 'mistral:latest',
-      size: 1234567890,
-      digest: 'sha256:1234567890',
-      format: 'gguf',
-      family: 'llama'
+    getModel: jest.fn().mockImplementation((name: string) => {
+      if (name === 'mistral:latest') {
+        return Promise.resolve({
+          name: 'mistral:latest',
+          size: 1234567890,
+          digest: 'sha256:1234567890',
+          format: 'gguf',
+          family: 'llama'
+        });
+      }
+      return Promise.reject(new Error('Model not found'));
     }),
+    healthCheck: jest.fn().mockResolvedValue(true),
     pullModel: jest.fn().mockResolvedValue({
       name: 'llama2:latest',
       size: 1234567890,
@@ -69,6 +75,72 @@ jest.mock('../../src/services/ollama/client', () => ({
         prompt_eval_duration: 13,
         eval_duration: 12
       };
+    })
+  }))
+}));
+
+// Mock OllamaModelManager
+jest.mock('../../src/services/ollama/model-manager', () => ({
+  OllamaModelManager: jest.fn().mockImplementation(() => ({
+    getModel: jest.fn().mockImplementation((name: string) => {
+      if (name === 'mistral:latest') {
+        return Promise.resolve({
+          name: 'mistral:latest',
+          size: 1234567890,
+          digest: 'sha256:1234567890',
+          format: 'gguf',
+          family: 'llama',
+          status: 'READY',
+          isDownloaded: true
+        });
+      }
+      throw new Error('Model not found');
+    }),
+    listModels: jest.fn().mockResolvedValue([
+      {
+        name: 'mistral:latest',
+        size: 1234567890,
+        digest: 'sha256:1234567890',
+        format: 'gguf',
+        family: 'llama',
+        status: 'READY',
+        isDownloaded: true
+      }
+    ]),
+    pullModel: jest.fn().mockImplementation((name: string) => {
+      if (name === 'llama2:latest') {
+        return Promise.resolve({
+          name: 'llama2:latest',
+          size: 1234567890,
+          digest: 'sha256:1234567890',
+          format: 'gguf',
+          family: 'llama',
+          status: 'READY',
+          isDownloaded: true
+        });
+      }
+      throw new Error('Model not found');
+    }),
+    updateModel: jest.fn().mockImplementation((name: string, config: any) => {
+      if (name === 'mistral:latest') {
+        return Promise.resolve({
+          name: 'mistral:latest',
+          size: 1234567890,
+          digest: 'sha256:1234567890',
+          format: 'gguf',
+          family: 'llama',
+          status: 'READY',
+          isDownloaded: true,
+          configuration: config
+        });
+      }
+      throw new Error('Model not found');
+    }),
+    deleteModel: jest.fn().mockImplementation((name: string) => {
+      if (name === 'llama2:latest') {
+        return Promise.resolve();
+      }
+      throw new Error('Model not found');
     })
   }))
 }));
