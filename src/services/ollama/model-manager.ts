@@ -334,7 +334,7 @@ export class OllamaModelManager {
     }
   }
 
-  async pullModel(name: string) {
+  async pullModel(name: string, onProgress?: (status: string, progress?: number) => void) {
     logger.info('pullModel: entry', { name });
     try {
       // Create or update the model record first
@@ -347,18 +347,30 @@ export class OllamaModelManager {
           parameters: {},
           format: 'gguf',
           family: 'unknown',
-          size: BigInt(0), // Add default size
-          digest: '' // Add default digest
+          size: BigInt(0),
+          digest: '',
+          progress: 0
         },
         update: {
           status: 'DOWNLOADING',
-          isDownloaded: false
+          isDownloaded: false,
+          progress: 0
         }
       });
 
-      // Pull the model from Ollama
+      // Pull the model from Ollama with progress tracking
       logger.info('pullModel: starting Ollama pull', { name });
-      await this.ollamaClient.pullModel(name);
+      await this.ollamaClient.pullModel(name, async (status, progress) => {
+        // Update progress in database
+        await this.prisma.ollamaModel.update({
+          where: { name },
+          data: {
+            status: status === 'success' ? 'READY' : 'DOWNLOADING',
+            progress: progress || 0
+          }
+        });
+        onProgress?.(status, progress);
+      });
       logger.info('pullModel: Ollama pull completed', { name });
 
       // Get the model info from Ollama

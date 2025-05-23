@@ -79,10 +79,75 @@ export class OllamaClient {
     return response.models;
   }
 
-  async pullModel(name: string): Promise<OllamaModelInfo> {
-    return this.request<OllamaModelInfo>('/api/pull', {
+  async pullModel(name: string, onProgress?: (status: string, progress?: number) => void): Promise<OllamaModelInfo> {
+    const response = await fetch(`${this.baseUrl}/api/pull`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ name }),
+    });
+
+    if (!response.ok) {
+      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+    }
+
+    if (!response.body) {
+      throw new OllamaError('No response body received');
+    }
+
+    return new Promise((resolve, reject) => {
+      let lastStatus = '';
+      const chunks: Buffer[] = [];
+
+      (response.body as unknown as Readable).on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+        try {
+          const data = JSON.parse(chunk.toString());
+          if (data.status) {
+            lastStatus = data.status;
+            onProgress?.(data.status, data.progress);
+          }
+          if (data.error) {
+            reject(new OllamaError(data.error));
+          }
+        } catch (parseError) {
+          console.warn(`[OllamaClient] Failed to parse pull response chunk: ${chunk.toString()}`);
+        }
+      });
+
+      (response.body as unknown as Readable).on('end', async () => {
+        if (lastStatus === 'success') {
+          let retries = 5;
+          let delay = 1000;
+          
+          while (retries > 0) {
+            try {
+              await new Promise(resolve => setTimeout(resolve, delay));
+              
+              const modelInfo = await this.getModel(name);
+              if (modelInfo) {
+                resolve(modelInfo);
+                return;
+              }
+            } catch (error) {
+              retries--;
+              if (retries === 0) {
+                reject(new OllamaError(`Failed to get model info after pull: ${error instanceof Error ? error.message : String(error)}`));
+                return;
+              }
+              const jitter = Math.random() * 0.1 * delay;
+              delay = Math.min(delay * 2 + jitter, 10000);
+            }
+          }
+        } else {
+          reject(new OllamaError('Model pull did not complete successfully'));
+        }
+      });
+
+      (response.body as unknown as Readable).on('error', (error) => {
+        reject(new OllamaError(`Stream error: ${error.message}`));
+      });
     });
   }
 

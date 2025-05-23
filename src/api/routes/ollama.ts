@@ -108,13 +108,26 @@ const getModel: RequestHandler<ModelParams> = async (req, res): Promise<void> =>
 // Pull a new model
 const pullModel: RequestHandler<ModelParams> = async (req, res): Promise<void> => {
   try {
-    await modelManager.pullModel(req.params.name);
-    res.json({ message: 'Model pull started' });
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Start the model pull with progress updates
+    await modelManager.pullModel(req.params.name, (status, progress) => {
+      res.write(`data: ${JSON.stringify({ status, progress })}\n\n`);
+    });
+
+    // Send final success message
+    res.write(`data: ${JSON.stringify({ status: 'complete' })}\n\n`);
+    res.end();
   } catch (error) {
     console.error('Error pulling model:', error);
-    res.status(500).json({ 
+    res.write(`data: ${JSON.stringify({ 
+      status: 'error',
       error: error instanceof Error ? error.message : 'Unknown error'
-    });
+    })}\n\n`);
+    res.end();
   }
 };
 
