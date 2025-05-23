@@ -138,20 +138,28 @@ export async function setupServer() {
   });
 
   app.get('/api/models/:name', async (req, res) => {
+    const modelName = req.params.name;
+    console.log(`[GET /api/models/${modelName}] Attempting to get model`);
+    
     try {
-      const model = await modelManager.getModel(req.params.name);
+      const model = await modelManager.getModel(modelName);
+      console.log(`[GET /api/models/${modelName}] Model found:`, model ? 'yes' : 'no');
+      
       if (!model) {
+        console.log(`[GET /api/models/${modelName}] Model not found, returning 404`);
         res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
         return;
       }
+      
+      console.log(`[GET /api/models/${modelName}] Returning model data`);
       res.json({ data: serializeBigInt(model) });
     } catch (error) {
-      if (error && typeof error === 'object' && 'message' in error && (error as any).message === 'Model not found') {
+      console.error(`[GET /api/models/${modelName}] Error:`, error);
+      if (error instanceof Error && error.message === 'Model not found') {
         res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
-      } else {
-        console.error('Error getting model:', error);
-        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to get model' } });
+        return;
       }
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to get model' } });
     }
   });
 
@@ -202,116 +210,98 @@ export async function setupServer() {
 
   // Chat endpoints
   app.post('/api/models/:name/chat', async (req, res) => {
+    const modelName = req.params.name;
+    console.log(`[POST /api/models/${modelName}/chat] Starting chat request`);
+    
     try {
       const { messages } = req.body;
       if (!messages || !Array.isArray(messages)) {
+        console.log(`[POST /api/models/${modelName}/chat] Invalid messages format`);
         res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } });
         return;
       }
-      const response = await ollamaClient.chat({
-        model: req.params.name,
-        messages: messages
-      });
-      res.json({ data: response });
-    } catch (error) {
-      console.error('Error in chat:', error);
-      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process chat request' } });
-    }
-  });
 
-  app.post('/api/models/:name/chat/stream', async (req, res) => {
-    const logFile = path.join(process.cwd(), 'logs', 'stream-chat.log');
-    const logMessage = (message: string, meta?: any) => {
-      const logEntry = {
-        timestamp: new Date().toISOString(),
-        message,
-        ...(meta ? { meta } : {})
-      };
-      fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
-    };
-
-    // Set headers for SSE early
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
-    });
-
-    try {
-      logMessage('Stream chat request received', {
-        model: req.params.name,
-        messageCount: req.body.messages?.length,
-        headers: req.headers
-      });
-
-      const { messages } = req.body;
-      if (!messages || !Array.isArray(messages)) {
-        logMessage('Invalid request: missing or invalid messages array', { body: req.body });
-        res.write(`data: ${JSON.stringify({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } })}\n\n`);
-        res.end();
-        return;
-      }
-
-      // Check if model exists before starting stream
+      // Check if model exists first
       try {
-        logMessage('Checking if model exists', { model: req.params.name });
-        await modelManager.getModel(req.params.name);
-        logMessage('Model found and verified');
+        console.log(`[POST /api/models/${modelName}/chat] Verifying model exists`);
+        await modelManager.getModel(modelName);
       } catch (error) {
-        logMessage('Model check failed', { 
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
-        if (error && typeof error === 'object' && 'message' in error && (error as any).message.includes('not found')) {
-          res.write(`data: ${JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Model not found' } })}\n\n`);
-          res.end();
+        console.error(`[POST /api/models/${modelName}/chat] Model verification failed:`, error);
+        if (error instanceof Error && error.message === 'Model not found') {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
           return;
         }
         throw error;
       }
 
-      logMessage('Starting chat stream', { 
-        model: req.params.name,
-        messageCount: messages.length
+      console.log(`[POST /api/models/${modelName}/chat] Starting chat`);
+      const response = await ollamaClient.chat({
+        model: modelName,
+        messages: messages
       });
+      console.log(`[POST /api/models/${modelName}/chat] Chat completed`);
+      res.json({ data: response });
+    } catch (error) {
+      console.error(`[POST /api/models/${modelName}/chat] Error:`, error);
+      if (error instanceof Error && error.message === 'Model not found') {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
+        return;
+      }
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process chat request' } });
+    }
+  });
 
-      const stream = ollamaClient.chatStream({
-        model: req.params.name,
+  app.post('/api/models/:name/chat/stream', async (req, res) => {
+    const modelName = req.params.name;
+    console.log(`[POST /api/models/${modelName}/chat/stream] Starting streaming chat request`);
+    
+    try {
+      const { messages } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        console.log(`[POST /api/models/${modelName}/chat/stream] Invalid messages format`);
+        res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Messages array is required' } });
+        return;
+      }
+
+      // Check if model exists first
+      try {
+        console.log(`[POST /api/models/${modelName}/chat/stream] Verifying model exists`);
+        await modelManager.getModel(modelName);
+      } catch (error) {
+        console.error(`[POST /api/models/${modelName}/chat/stream] Model verification failed:`, error);
+        if (error instanceof Error && error.message === 'Model not found') {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
+          return;
+        }
+        throw error;
+      }
+
+      // Set SSE headers
+      console.log(`[POST /api/models/${modelName}/chat/stream] Setting SSE headers`);
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      console.log(`[POST /api/models/${modelName}/chat/stream] Starting chat stream`);
+      const stream = await ollamaClient.chatStream({
+        model: modelName,
         messages: messages
       });
 
-      let chunkCount = 0;
-      // Write each chunk as an SSE event
       for await (const chunk of stream) {
-        chunkCount++;
-        logMessage('Streaming chunk', { 
-          chunkNumber: chunkCount,
-          chunkSize: JSON.stringify(chunk).length,
-          done: chunk.done
-        });
+        console.log(`[POST /api/models/${modelName}/chat/stream] Sending chunk:`, chunk);
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
-
-      logMessage('Stream completed', { 
-        totalChunks: chunkCount,
-        model: req.params.name
-      });
+      console.log(`[POST /api/models/${modelName}/chat/stream] Stream completed`);
       res.end();
     } catch (error) {
-      logMessage('Error in streaming chat', { 
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        model: req.params.name
-      });
-
-      // Send error as SSE event
-      res.write(`data: ${JSON.stringify({ 
-        error: { 
-          code: 'INTERNAL_ERROR', 
-          message: 'Failed to process streaming chat request' 
-        }
-      })}\n\n`);
-      res.end();
+      console.error(`[POST /api/models/${modelName}/chat/stream] Error:`, error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process streaming chat request' } });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Failed to process streaming chat request' } })}\n\n`);
+        res.end();
+      }
     }
   });
 

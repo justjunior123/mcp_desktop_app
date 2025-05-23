@@ -258,19 +258,8 @@ export class OllamaModelManager {
         });
         
         if (!model) {
-          // If still not found, try pulling the model
-          prodLog('info', 'getModel: model not found after sync, attempting pull', { name });
-          await this.pullModel(name);
-          
-          // Try getting the model one more time
-          model = await this.prisma.ollamaModel.findUnique({
-            where: { name },
-            include: { configuration: true }
-          });
-          
-          if (!model) {
-            throw new Error('Model not found after sync and pull');
-          }
+          prodLog('error', 'getModel: model not found after sync', { name });
+          throw new Error('Model not found');
         }
       }
 
@@ -291,7 +280,10 @@ export class OllamaModelManager {
       return transformedModel;
     } catch (error) {
       prodLog('error', 'getModel: error', { error: error instanceof Error ? error.stack || error.message : error });
-      throw error;
+      if (error instanceof Error && error.message === 'Model not found') {
+        throw error; // Re-throw the specific error
+      }
+      throw new Error('Failed to get model');
     }
   }
 
