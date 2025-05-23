@@ -4,6 +4,7 @@ import { prisma } from '../setup';
 import { getTestInstances } from '../../electron/test-utils';
 import fs from 'fs';
 import path from 'path';
+import fetch from 'node-fetch';
 
 // Set test environment
 Object.defineProperty(process.env, 'NODE_ENV', {
@@ -75,25 +76,69 @@ jest.mock('../../src/services/ollama/client', () => ({
 describe('MCP API Integration Tests', () => {
   jest.setTimeout(30000);
   let server: any;
-  const TEST_PORT = 3100;
+  const TEST_PORT = 3101;
 
   beforeAll(async () => {
+    // Check if Ollama server is running
+    const checkOllamaServer = async (retries = 5, delay = 1000) => {
+      const logFile = path.join(__dirname, 'ollama-check.log');
+      const logMessage = (message: string) => {
+        fs.appendFileSync(logFile, `${new Date().toISOString()} - ${message}\n`);
+      };
+      
+      logMessage('Checking Ollama server availability');
+      
+      for (let i = 0; i < retries; i++) {
+        try {
+          const response = await fetch('http://localhost:11434/api/tags');
+          if (response.ok) {
+            logMessage('Ollama server is available');
+            return true;
+          }
+          logMessage(`Ollama server health check returned status ${response.status}`);
+        } catch (e) {
+          logMessage(`Attempt ${i + 1} failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        await new Promise(r => setTimeout(r, delay));
+      }
+      
+      logMessage('Ollama server is not available');
+      throw new Error('Ollama server is not running. Please start the Ollama server before running tests.');
+    };
+
+    // Wait for Ollama server
+    await checkOllamaServer();
+    
     // Start the server
     server = await setupServer();
     
     // Wait for server to be ready
-    const waitForServerReady = async (retries = 20, delay = 250) => {
+    const waitForServerReady = async (retries = 30, delay = 500) => {
+      const logFile = path.join(__dirname, 'server-ready.log');
+      const logMessage = (message: string) => {
+        fs.appendFileSync(logFile, `${new Date().toISOString()} - ${message}\n`);
+      };
+      
+      logMessage('Starting server readiness check');
+      
       for (let i = 0; i < retries; i++) {
         try {
+          logMessage(`Attempt ${i + 1}/${retries}`);
           const res = await request(getBaseUrl()).get('/health');
-          if (res.status === 200) return;
+          if (res.status === 200) {
+            logMessage('Server is ready');
+            return;
+          }
+          logMessage(`Health check returned status ${res.status}`);
         } catch (e) {
-          // ignore
+          logMessage(`Attempt ${i + 1} failed: ${e instanceof Error ? e.message : String(e)}`);
         }
         await new Promise(r => setTimeout(r, delay));
       }
+      logMessage('Server did not become ready in time');
       throw new Error('Server did not become ready in time');
     };
+    
     await waitForServerReady();
     
     // Custom logger to write logs to a file
@@ -137,13 +182,15 @@ describe('MCP API Integration Tests', () => {
     });
 
     it('should return 404 for non-existent model', async () => {
+      const modelName = 'non-existent-model';
       const response = await request(getBaseUrl())
-        .get('/api/models/non-existent-model')
+        .get(`/api/models/${modelName}`)
         .expect('Content-Type', /json/)
         .expect(404);
 
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toHaveProperty('code', 'NOT_FOUND');
+      expect(response.body.error).toHaveProperty('message', 'Model not found');
     });
 
     it('should create a new model', async () => {

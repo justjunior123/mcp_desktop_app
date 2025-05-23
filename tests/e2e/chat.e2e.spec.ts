@@ -3,6 +3,7 @@ import { setupServer, cleanup } from '../../electron/server';
 import { prisma } from '../setup';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 
 // Set test environment
 Object.defineProperty(process.env, 'NODE_ENV', {
@@ -11,18 +12,43 @@ Object.defineProperty(process.env, 'NODE_ENV', {
 });
 
 describe('Chat E2E Tests', () => {
-  jest.setTimeout(120000); // 2 minute timeout for all tests
+  jest.setTimeout(300000); // 5 minute timeout for all tests
   let server: any;
-  const TEST_PORT = 3101; // Use a different port
+  const TEST_PORT = 3101;
   const OLLAMA_HOST = 'http://127.0.0.1:11434';
+  let isOllamaAvailable = false;
 
   beforeAll(async () => {
+    // Start server
     server = await setupServer();
+    
     // Wait for server to be ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }, 120000); // 2 minute timeout for beforeAll
+    const waitForServerReady = async (retries = 20, delay = 250) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await request(`http://localhost:${TEST_PORT}`).get('/health');
+          if (res.status === 200) return;
+        } catch (e) {
+          // ignore
+        }
+        await new Promise(r => setTimeout(r, delay));
+      }
+      throw new Error('Server did not become ready in time');
+    };
+    await waitForServerReady();
+
+    // Check if Ollama is available
+    try {
+      await axios.get(`${OLLAMA_HOST}/api/tags`, { timeout: 5000 });
+      isOllamaAvailable = true;
+    } catch (error) {
+      console.warn('Ollama server is not available. Some tests will be skipped.');
+      isOllamaAvailable = false;
+    }
+  }, 60000); // 1 minute timeout for beforeAll
 
   afterAll(async () => {
+    // Ensure cleanup is completed before moving on
     if (server) {
       await new Promise<void>((resolve) => {
         server.close(() => {
@@ -31,6 +57,8 @@ describe('Chat E2E Tests', () => {
         });
       });
     }
+    await cleanup();
+    await prisma.$disconnect();
   }, 30000); // 30 second timeout for afterAll
 
   // Helper function to get the base URL for requests
@@ -38,6 +66,11 @@ describe('Chat E2E Tests', () => {
 
   describe('Model Management', () => {
     it('should pull a model successfully', async () => {
+      if (!isOllamaAvailable) {
+        console.log('Skipping test: Ollama server not available');
+        return;
+      }
+
       const modelName = 'mistral:latest';
       const response = await request(getBaseUrl())
         .post('/api/models')
@@ -47,7 +80,7 @@ describe('Chat E2E Tests', () => {
 
       expect(response.body).toHaveProperty('data');
       expect(response.body.data).toHaveProperty('name', modelName);
-    }, 30000);
+    }, 60000);
 
     it('should return 404 for non-existent model', async () => {
       const response = await request(getBaseUrl())
@@ -62,6 +95,11 @@ describe('Chat E2E Tests', () => {
 
   describe('Basic Chat', () => {
     it('should handle a simple chat request', async () => {
+      if (!isOllamaAvailable) {
+        console.log('Skipping test: Ollama server not available');
+        return;
+      }
+
       const modelName = 'mistral:latest';
       const response = await request(getBaseUrl())
         .post(`/api/models/${modelName}/chat`)
@@ -73,7 +111,7 @@ describe('Chat E2E Tests', () => {
 
       expect(response.body).toHaveProperty('data');
       expect(response.body.data).toHaveProperty('message');
-    }, 60000);
+    }, 120000);
 
     it('should return 400 for invalid request format', async () => {
       const response = await request(getBaseUrl())
@@ -85,10 +123,33 @@ describe('Chat E2E Tests', () => {
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toHaveProperty('code', 'INVALID_REQUEST');
     }, 30000);
+
+    it('should handle Ollama server unavailability', async () => {
+      if (isOllamaAvailable) {
+        console.log('Skipping test: Ollama server is available');
+        return;
+      }
+
+      const response = await request(getBaseUrl())
+        .post('/api/models/mistral:latest/chat')
+        .send({
+          messages: [{ role: 'user', content: 'Hello' }]
+        })
+        .expect('Content-Type', /json/)
+        .expect(503);
+
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'SERVICE_UNAVAILABLE');
+    }, 30000);
   });
 
   describe('Streaming Chat', () => {
     it('should handle a streaming chat request', async () => {
+      if (!isOllamaAvailable) {
+        console.log('Skipping test: Ollama server not available');
+        return;
+      }
+
       const modelName = 'mistral:latest';
       const response = await request(getBaseUrl())
         .post(`/api/models/${modelName}/chat/stream`)
@@ -104,7 +165,7 @@ describe('Chat E2E Tests', () => {
       const firstChunk = JSON.parse(lines[0].replace('data: ', ''));
       expect(firstChunk).toHaveProperty('model', modelName);
       expect(firstChunk).toHaveProperty('message');
-    }, 60000);
+    }, 120000);
 
     it('should handle streaming errors gracefully', async () => {
       const response = await request(getBaseUrl())
@@ -117,7 +178,7 @@ describe('Chat E2E Tests', () => {
 
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toHaveProperty('code', 'NOT_FOUND');
-    }, 60000);
+    }, 30000);
   });
 
   describe('Error Handling', () => {

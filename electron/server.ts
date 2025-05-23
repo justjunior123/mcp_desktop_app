@@ -108,8 +108,52 @@ export async function setupServer() {
   });
 
   // Health check endpoint
-  app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+  app.get('/health', async (req, res) => {
+    const logsDir = path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    
+    const logFile = path.join(logsDir, 'health.log');
+    const logMessage = (message: string, meta?: any) => {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        message,
+        ...(meta ? { meta } : {})
+      };
+      fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+    };
+    
+    try {
+      // In test mode, we don't require Ollama to be available
+      if (!isTest) {
+        // Check if Ollama is available
+        const isHealthy = await ollamaClient.healthCheck();
+        logMessage('Health check completed', { isHealthy });
+        
+        if (!isHealthy) {
+          res.status(503).json({ 
+            status: 'error',
+            message: 'Ollama service is not available'
+          });
+          return;
+        }
+      }
+      
+      res.status(200).json({ 
+        status: 'ok',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logMessage('Health check failed', { 
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      res.status(503).json({ 
+        status: 'error',
+        message: 'Service is not healthy'
+      });
+    }
   });
 
   // MCP endpoint
@@ -139,27 +183,46 @@ export async function setupServer() {
 
   app.get('/api/models/:name', async (req, res) => {
     const modelName = req.params.name;
-    console.log(`[GET /api/models/${modelName}] Attempting to get model`);
+    const logFile = path.join(process.cwd(), 'logs', 'api.log');
+    
+    const logMessage = (message: string, meta?: any) => {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        endpoint: 'GET /api/models/:name',
+        message,
+        ...(meta ? { meta } : {})
+      };
+      fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+    };
+    
+    logMessage('Attempting to get model', { modelName });
     
     try {
       const model = await modelManager.getModel(modelName);
-      console.log(`[GET /api/models/${modelName}] Model found:`, model ? 'yes' : 'no');
-      
-      if (!model) {
-        console.log(`[GET /api/models/${modelName}] Model not found, returning 404`);
-        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
-        return;
-      }
-      
-      console.log(`[GET /api/models/${modelName}] Returning model data`);
+      logMessage('Model found', { modelName });
       res.json({ data: serializeBigInt(model) });
     } catch (error) {
-      console.error(`[GET /api/models/${modelName}] Error:`, error);
+      logMessage('Error getting model', { 
+        modelName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
       if (error instanceof Error && error.message === 'Model not found') {
-        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Model not found' } });
+        res.status(404).json({ 
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Model not found'
+          }
+        });
         return;
       }
-      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to get model' } });
+      
+      res.status(500).json({ 
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to get model'
+        }
+      });
     }
   });
 
@@ -235,12 +298,37 @@ export async function setupServer() {
       }
 
       console.log(`[POST /api/models/${modelName}/chat] Starting chat`);
-      const response = await ollamaClient.chat({
-        model: modelName,
-        messages: messages
-      });
-      console.log(`[POST /api/models/${modelName}/chat] Chat completed`);
-      res.json({ data: response });
+      try {
+        const response = await ollamaClient.chat({
+          model: modelName,
+          messages: messages
+        });
+        console.log(`[POST /api/models/${modelName}/chat] Chat completed`);
+        res.json({ data: response });
+      } catch (error) {
+        console.error(`[POST /api/models/${modelName}/chat] Ollama chat error:`, error);
+        if (error instanceof Error) {
+          if (error.message.includes('ECONNREFUSED')) {
+            res.status(503).json({ 
+              error: { 
+                code: 'SERVICE_UNAVAILABLE', 
+                message: 'Ollama server is not available. Please ensure it is running.' 
+              } 
+            });
+            return;
+          }
+          if (error.message.includes('timeout')) {
+            res.status(504).json({ 
+              error: { 
+                code: 'GATEWAY_TIMEOUT', 
+                message: 'Request to Ollama server timed out' 
+              } 
+            });
+            return;
+          }
+        }
+        throw error;
+      }
     } catch (error) {
       console.error(`[POST /api/models/${modelName}/chat] Error:`, error);
       if (error instanceof Error && error.message === 'Model not found') {

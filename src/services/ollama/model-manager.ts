@@ -279,9 +279,14 @@ export class OllamaModelManager {
       prodLog('info', 'getModel: success', { found: true });
       return transformedModel;
     } catch (error) {
-      prodLog('error', 'getModel: error', { error: error instanceof Error ? error.stack || error.message : error });
+      prodLog('error', 'getModel: error', { 
+        error: error instanceof Error ? error.stack || error.message : error,
+        name 
+      });
+      
+      // Ensure we're throwing the correct error type
       if (error instanceof Error && error.message === 'Model not found') {
-        throw error; // Re-throw the specific error
+        throw new Error('Model not found');
       }
       throw new Error('Failed to get model');
     }
