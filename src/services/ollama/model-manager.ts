@@ -276,6 +276,12 @@ export class OllamaModelManager {
         configuration: model.configuration
       };
 
+      // If the model has an error status, treat it as not found
+      if (model.status === 'ERROR') {
+        prodLog('error', 'getModel: model has error status', { name, error: model.error });
+        throw new Error('Model not found');
+      }
+
       prodLog('info', 'getModel: success', { found: true });
       return transformedModel;
     } catch (error) {

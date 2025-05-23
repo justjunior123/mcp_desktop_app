@@ -219,8 +219,17 @@ export async function setupServer() {
       // Try to get the model from Ollama
       logMessage('Calling modelManager.getModel', { modelName });
       const model = await modelManager.getModel(modelName);
-      logMessage('Model found', { modelName, model });
-      res.json({ data: serializeBigInt(model) });
+      
+      // Convert BigInt values to strings before sending response
+      const serializedModel = Object.fromEntries(
+        Object.entries(model).map(([key, value]) => [
+          key,
+          typeof value === 'bigint' ? value.toString() : value
+        ])
+      );
+      
+      logMessage('Model found', { modelName, model: serializedModel });
+      res.json({ data: serializedModel });
     } catch (error) {
       logMessage('Error getting model', { 
         modelName,
