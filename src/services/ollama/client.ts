@@ -63,7 +63,7 @@ export class OllamaClient {
 
   async healthCheck(): Promise<boolean> {
     try {
-      await this.request('/api/tags');
+      await this.request('/api/version');
       return true;
     } catch (error) {
       return false;
@@ -71,16 +71,18 @@ export class OllamaClient {
   }
 
   async getModel(name: string): Promise<OllamaModelInfo> {
-    const models = await this.request<{ models: OllamaModelInfo[] }>('/api/tags');
-    const model = models.models.find(m => m.name === name);
-    if (!model) {
-      throw new OllamaError(`Model ${name} not found`, 404);
-    }
-    return this.transformModelInfo(model);
+    const response = await this.request<OllamaModelInfo>('/api/show', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    return this.transformModelInfo(response);
   }
 
   async listModels(): Promise<OllamaModelInfo[]> {
-    const response = await this.request<{ models: OllamaModelInfo[] }>('/api/tags');
+    const response = await this.request<{ models: any[] }>('/api/tags');
+    if (!response.models) {
+      throw new OllamaError('Invalid response from Ollama API');
+    }
     return response.models.map(this.transformModelInfo);
   }
 
@@ -158,7 +160,7 @@ export class OllamaClient {
 
   async deleteModel(name: string): Promise<void> {
     await this.request(`/api/delete`, {
-      method: 'DELETE',
+      method: 'POST',
       body: JSON.stringify({ name }),
     });
   }
@@ -200,16 +202,13 @@ export class OllamaClient {
       throw new OllamaError('Response body is null', 500);
     }
 
-    const reader = response.body.getReader();
+    const reader = (response.body as unknown as Readable);
     const decoder = new TextDecoder();
     let buffer = '';
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
+      for await (const chunk of reader) {
+        buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -225,7 +224,7 @@ export class OllamaClient {
         }
       }
     } finally {
-      reader.releaseLock();
+      reader.destroy?.();
     }
   }
 
@@ -235,4 +234,4 @@ export class OllamaClient {
       body: JSON.stringify(request),
     });
   }
-} 
+}
