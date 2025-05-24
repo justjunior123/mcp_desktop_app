@@ -34,7 +34,7 @@ module.exports = {
     {
       displayName: 'unit',
       testEnvironment: 'node',
-      testMatch: ['**/tests/unit/**/*.test.ts', '**/tests/unit/**/*.spec.ts'],
+      testMatch: ['**/tests/unit/**/*.test.ts', '**/tests/unit/**/*.spec.ts', '**/tests/e2e/**/*.e2e.test.ts'],
       setupFilesAfterEnv: ['<rootDir>/jest.setup.node.js'],
       transform: {
         '^.+\\.(ts|tsx)$': ['ts-jest', {
