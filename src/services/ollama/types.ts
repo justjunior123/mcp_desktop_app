@@ -91,6 +91,7 @@ export interface OllamaChatMessage {
 export interface OllamaChatRequest {
   model: string;
   messages: OllamaChatMessage[];
+  stream?: boolean;
   options?: {
     temperature?: number;
     top_p?: number;
@@ -149,4 +150,4 @@ export interface OllamaModelDetails extends OllamaModelInfo {
 
 export interface OllamaTagsResponse {
   models: OllamaModelInfo[];
-} 
+}

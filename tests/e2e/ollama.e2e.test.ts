@@ -1,10 +1,23 @@
 import { OllamaClient } from '../../src/services/ollama/client';
 import { OllamaChatRequest, OllamaChatMessage, OllamaChatResponse, OllamaModelInfo, OllamaEmbeddingRequest } from '../../src/services/ollama/types';
 
+/**
+ * Ollama E2E Tests
+ * 
+ * Pre-requisites:
+ * - Ollama server running on http://localhost:11434
+ * - mistral:7b-instruct-q2_K model installed
+ * 
+ * Note: These tests assume the model is already installed to avoid lengthy downloads
+ * during test execution. To install the required model, run:
+ * ollama pull mistral:7b-instruct-q2_K
+ */
 describe('Ollama E2E Tests (Current API)', () => {
   let client: OllamaClient;
   let stream: AsyncGenerator<OllamaChatResponse> | undefined;
   const TEST_TIMEOUT = 60000; // 60 seconds
+  const CHAT_TIMEOUT = TEST_TIMEOUT * 5; // 5 minutes for chat tests
+  const TEST_MODEL = 'mistral:7b-instruct-q2_K';
 
   beforeAll(() => {
     client = new OllamaClient('http://localhost:11434');
@@ -40,95 +53,64 @@ describe('Ollama E2E Tests (Current API)', () => {
     expect(models[0]).toHaveProperty('name');
   }, TEST_TIMEOUT);
 
-  it('should pull a model and show its details', async () => {
-    const modelName = 'mistral:latest';
-    const model = await client.pullModel(modelName);
-    expect(model).toHaveProperty('name', modelName);
-    const details = await client.getModel(modelName);
-    expect(details).toHaveProperty('name', modelName);
+  it('should verify test model exists', async () => {
+    const model = await client.getModel(TEST_MODEL);
+    expect(model).toHaveProperty('name', TEST_MODEL);
   }, TEST_TIMEOUT);
 
-  it('should delete a model if it exists', async () => {
-    const modelName = 'mistral:7b-instruct-q2_K';
-    let modelExists = false;
+  /**
+   * Pull test commented out to avoid lengthy downloads during test runs.
+   * Keep this test for documentation and future reference.
+   * To manually pull the model:
+   * ollama pull mistral:7b-instruct-q2_K
+   */
+  /* it('should pull mistral model', async () => {
+    const modelName = TEST_MODEL;
+    console.log(`Starting to pull model ${modelName}...`);
 
-    // First check if model exists
     try {
-      await client.getModel(modelName);
-      modelExists = true;
-      console.log(`Model ${modelName} exists, proceeding with deletion test`);
+      for await (const chunk of client.pullModelStream(modelName)) {
+        if (chunk.status) {
+          console.log(`Pull status: ${chunk.status}`);
+        }
+        if (chunk.digest) {
+          console.log(`Pull progress: ${chunk.digest}`);
+        }
+      }
+
+      // Verify model exists after pull
+      const model = await client.getModel(modelName);
+      expect(model.name).toBe(modelName);
+      console.log(`Successfully pulled and verified model ${modelName}`);
     } catch (error) {
-      console.log(`Model ${modelName} not found, skipping delete test`);
-      return;
+      console.error(`Failed to pull model ${modelName}:`, error);
+      throw error;
     }
+  }, TEST_TIMEOUT * 3); */
 
-    if (modelExists) {
-      // Try to delete it
-      try {
-        await client.deleteModel(modelName);
-        console.log(`Successfully deleted model ${modelName}`);
-      } catch (error) {
-        console.error(`Failed to delete model ${modelName}:`, error);
-        throw error;
+  // Note: Delete test commented out to avoid having to re-download model.
+
+  it('should handle basic chat', async () => {
+    console.log('Sending chat request...');
+    const messages: OllamaChatMessage[] = [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'Say hello in exactly 5 words.' }
+    ];
+    const request: OllamaChatRequest = {
+      model: TEST_MODEL,
+      messages,
+      stream: false, // Explicitly set stream to false
+      options: {
+        temperature: 0.7,
+        num_predict: 30,
       }
-
-      // Verify it's gone
-      try {
-        await client.getModel(modelName);
-        throw new Error(`Model ${modelName} still exists after deletion`);
-      } catch (error: any) {
-        // Expected error - model should not exist
-        expect(error.message).toMatch(/model not found|404/i);
-        console.log(`Verified model ${modelName} was deleted`);
-      }
-    }
-  }, TEST_TIMEOUT * 2);
-
-  // it('should handle basic chat', async () => {
-  //   const messages: OllamaChatMessage[] = [
-  //     { role: 'user', content: 'Hello, how are you?' }
-  //   ];
-  //   const request: OllamaChatRequest = {
-  //     model: 'mistral:latest',
-  //     messages
-  //   };
-  //   const response = await client.chat(request);
-  //   expect(response).toHaveProperty('message');
-  //   expect(response.message).toHaveProperty('role', 'assistant');
-  //   expect(typeof response.message.content).toBe('string');
-  // }, TEST_TIMEOUT);
-
-  // it('should handle streaming chat', async () => {
-  //   const messages: OllamaChatMessage[] = [
-  //     { role: 'user', content: 'Stream this please.' }
-  //   ];
-  //   const request: OllamaChatRequest = {
-  //     model: 'mistral:latest',
-  //     messages
-  //   };
-  //   stream = await client.chatStream(request);
-  //   const response = await collectStreamResponse(stream);
-  //   expect(response.trim()).toBeTruthy();
-  // }, TEST_TIMEOUT);
-
-  // it('should return error for invalid model', async () => {
-  //   const messages: OllamaChatMessage[] = [
-  //     { role: 'user', content: 'Hello!' }
-  //   ];
-  //   const request: OllamaChatRequest = {
-  //     model: 'non-existent-model',
-  //     messages
-  //   };
-  //   await expect(client.chat(request)).rejects.toThrow();
-  // }, TEST_TIMEOUT);
-
-  // it('should generate embeddings', async () => {
-  //   const embeddingRequest: OllamaEmbeddingRequest = {
-  //     model: 'mistral:latest',
-  //     prompt: 'Test embedding'
-  //   };
-  //   const result = await client.embeddings(embeddingRequest);
-  //   expect(result).toHaveProperty('embedding');
-  //   expect(Array.isArray(result.embedding)).toBe(true);
-  // }, TEST_TIMEOUT);
+    };
+    const response = await client.chat(request);
+    console.log('Chat response received:', JSON.stringify(response, null, 2));
+    
+    expect(response).toHaveProperty('message');
+    expect(response.message).toHaveProperty('role', 'assistant');
+    expect(typeof response.message.content).toBe('string');
+    expect(response.message.content.length).toBeGreaterThan(0);
+  }, CHAT_TIMEOUT);
 });

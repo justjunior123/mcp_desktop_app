@@ -97,7 +97,7 @@ export class OllamaClient {
     return response.models.map(this.transformModelInfo);
   }
 
-  async pullModel(name: string, onProgress?: (status: string, progress?: number) => void): Promise<OllamaModelInfo> {
+  async *pullModelStream(name: string): AsyncGenerator<{ status?: string; digest?: string }> {
     const response = await fetch(`${this.baseUrl}/api/pull`, {
       method: 'POST',
       headers: {
@@ -114,38 +114,27 @@ export class OllamaClient {
       throw new OllamaError('No response body received');
     }
 
-    return new Promise((resolve, reject) => {
-      let lastStatus = '';
-      const reader = response.body as unknown as Readable;
-
-      reader.on('data', (chunk: Buffer) => {
-        try {
-          const data = JSON.parse(chunk.toString());
-          if (data.status) {
-            lastStatus = data.status;
-            onProgress?.(data.status, data.progress);
-          }
-          if (data.error) {
-            reject(new OllamaError(data.error));
-          }
-        } catch (parseError) {
-          // Ignore parse errors for partial chunks
+    const reader = response.body as unknown as Readable;
+    for await (const chunk of reader) {
+      try {
+        const data = JSON.parse(chunk.toString());
+        if (data.error) {
+          throw new OllamaError(data.error);
         }
-      });
+        yield data;
+      } catch (parseError) {
+        // Ignore parse errors for partial chunks
+      }
+    }
+  }
 
-      reader.on('end', async () => {
-        try {
-          const modelInfo = await this.getModel(name);
-          resolve(modelInfo);
-        } catch (error) {
-          reject(new OllamaError(`Failed to get model info after pull: ${error instanceof Error ? error.message : String(error)}`));
-        }
-      });
-
-      reader.on('error', (error) => {
-        reject(new OllamaError(`Stream error: ${error.message}`));
-      });
-    });
+  async pullModel(name: string, onProgress?: (status: string, progress?: number) => void): Promise<OllamaModelInfo> {
+    for await (const chunk of this.pullModelStream(name)) {
+      if (chunk.status) {
+        onProgress?.(chunk.status, undefined);
+      }
+    }
+    return this.getModel(name);
   }
 
   async deleteModel(name: string): Promise<void> {
@@ -174,9 +163,61 @@ export class OllamaClient {
 
   async chat(request: OllamaChatRequest): Promise<OllamaChatResponse> {
     const { model, messages, options } = request;
-    return this.request<OllamaChatResponse>('/api/chat', {
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ model, messages, options }),
+    });
+
+    if (!response.ok) {
+      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+    }
+
+    if (!response.body) {
+      throw new OllamaError('No response body received');
+    }
+
+    // Read the response as a text stream
+    const reader = response.body as unknown as Readable;
+    let content = '';
+    let lastChunk: any = null;
+    
+    return new Promise((resolve, reject) => {
+      reader.on('data', (chunk: Buffer) => {
+        try {
+          const data = JSON.parse(chunk.toString());
+          if (data.message?.content) {
+            content += data.message.content;
+          }
+          lastChunk = data;
+        } catch (error) {
+          // Ignore parse errors for partial chunks
+        }
+      });
+
+      reader.on('end', () => {
+        try {
+          if (!lastChunk) {
+            throw new Error('No response received');
+          }
+          // Return the final response with accumulated content
+          resolve({
+            ...lastChunk,
+            message: {
+              ...lastChunk.message,
+              content
+            }
+          });
+        } catch (error) {
+          reject(new OllamaError(`Failed to parse chat response: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      });
+
+      reader.on('error', (error) => {
+        reject(new OllamaError(`Stream error: ${error.message}`));
+      });
     });
   }
 
