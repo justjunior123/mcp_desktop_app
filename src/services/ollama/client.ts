@@ -149,10 +149,20 @@ export class OllamaClient {
   }
 
   async deleteModel(name: string): Promise<void> {
-    await this.request(`/api/delete`, {
+    const response = await fetch(`${this.baseUrl}/api/delete`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ name }),
     });
+
+    if (!response.ok) {
+      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+    }
+
+    // Wait for the response to complete
+    await response.text();
   }
 
   async generate(request: OllamaGenerateRequest): Promise<OllamaGenerateResponse> {
