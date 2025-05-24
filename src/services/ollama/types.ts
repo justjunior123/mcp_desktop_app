@@ -91,8 +91,21 @@ export interface OllamaChatMessage {
 export interface OllamaChatRequest {
   model: string;
   messages: OllamaChatMessage[];
-  stream?: boolean;
-  options?: OllamaGenerateRequest['options'];
+  options?: {
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+    num_predict?: number;
+    stop?: string[];
+    repeat_penalty?: number;
+    presence_penalty?: number;
+    frequency_penalty?: number;
+    tfs_z?: number;
+    mirostat?: number;
+    mirostat_tau?: number;
+    mirostat_eta?: number;
+    seed?: number;
+  };
 }
 
 export interface OllamaChatResponse {
@@ -132,4 +145,8 @@ export interface OllamaModelDetails extends OllamaModelInfo {
     systemPrompt?: string;
     contextWindow?: number;
   };
+}
+
+export interface OllamaTagsResponse {
+  models: OllamaModelInfo[];
 } 

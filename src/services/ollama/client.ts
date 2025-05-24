@@ -71,11 +71,17 @@ export class OllamaClient {
   }
 
   async getModel(name: string): Promise<OllamaModelInfo> {
-    return this.request<OllamaModelInfo>(`/api/models/${encodeURIComponent(name)}`);
+    const models = await this.request<{ models: OllamaModelInfo[] }>('/api/tags');
+    const model = models.models.find(m => m.name === name);
+    if (!model) {
+      throw new OllamaError(`Model ${name} not found`, 404);
+    }
+    return this.transformModelInfo(model);
   }
 
   async listModels(): Promise<OllamaModelInfo[]> {
-    return this.request<OllamaModelInfo[]>('/api/models');
+    const response = await this.request<{ models: OllamaModelInfo[] }>('/api/tags');
+    return response.models.map(this.transformModelInfo);
   }
 
   async pullModel(name: string, onProgress?: (status: string, progress?: number) => void): Promise<OllamaModelInfo> {
@@ -166,39 +172,35 @@ export class OllamaClient {
 
   async chat(request: OllamaChatRequest): Promise<OllamaChatResponse> {
     const { model, messages, options } = request;
-    // Send chat request to Ollama server for a specific model
-    return this.request<OllamaChatResponse>(
-      `/api/models/${encodeURIComponent(model)}/chat`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ messages, options }),
-      }
-    );
+    return this.request<OllamaChatResponse>('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ model, messages, options }),
+    });
   }
 
   async *chatStream(request: OllamaChatRequest): AsyncGenerator<OllamaChatResponse> {
     const { model, messages, options } = request;
-    // Stream chat response from Ollama server for a specific model
     const response = await fetch(
-      `${this.baseUrl}/api/models/${encodeURIComponent(model)}/chat/stream`,
+      `${this.baseUrl}/api/chat`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ messages, options }),
+        body: JSON.stringify({ model, messages, options, stream: true }),
       }
     );
 
     if (!response.ok) {
-      throw new OllamaError(`HTTP error ${response.status}`, response.status);
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new OllamaError(error.error || 'Failed to start chat stream', response.status);
     }
 
     if (!response.body) {
-      throw new OllamaError('No response body received');
+      throw new OllamaError('Response body is null', 500);
     }
 
-    const reader = (response.body as unknown as ReadableStream<Uint8Array>).getReader();
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -212,15 +214,13 @@ export class OllamaClient {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const data = JSON.parse(line) as OllamaChatResponse;
-            if ('error' in data) {
-              throw new OllamaError(data.error as string);
+          if (line.trim()) {
+            try {
+              const chunk = JSON.parse(line) as OllamaChatResponse;
+              yield chunk;
+            } catch (e) {
+              console.warn('Failed to parse chunk:', line);
             }
-            yield data;
-          } catch (parseError) {
-            console.warn(`[OllamaClient] Failed to parse chat response line: ${line}`);
           }
         }
       }
