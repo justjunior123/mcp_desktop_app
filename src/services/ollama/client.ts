@@ -204,11 +204,12 @@ export class OllamaClient {
           }
           // Return the final response with accumulated content
           resolve({
-            ...lastChunk,
+            model: lastChunk.model,
             message: {
-              ...lastChunk.message,
-              content
-            }
+              role: 'assistant',
+              content: content
+            },
+            done: true
           });
         } catch (error) {
           reject(new OllamaError(`Failed to parse chat response: ${error instanceof Error ? error.message : String(error)}`));
