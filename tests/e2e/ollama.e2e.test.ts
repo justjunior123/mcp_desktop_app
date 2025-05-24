@@ -48,10 +48,10 @@ describe('Ollama E2E Tests (Current API)', () => {
     expect(details).toHaveProperty('name', modelName);
   }, TEST_TIMEOUT);
 
-  // it('should delete a model', async () => {
-  //   const modelName = 'llama2:latest';
-  //   await expect(client.deleteModel(modelName)).resolves.toBeUndefined();
-  // }, TEST_TIMEOUT);
+  it('should delete a model', async () => {
+    const modelName = 'llama2:latest';
+    await expect(client.deleteModel(modelName)).resolves.toBeUndefined();
+  }, TEST_TIMEOUT);
 
   // it('should handle basic chat', async () => {
   //   const messages: OllamaChatMessage[] = [

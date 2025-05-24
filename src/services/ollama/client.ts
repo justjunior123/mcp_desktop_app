@@ -71,11 +71,22 @@ export class OllamaClient {
   }
 
   async getModel(name: string): Promise<OllamaModelInfo> {
-    const response = await this.request<OllamaModelInfo>('/api/show', {
+    const response = await this.request<any>('/api/show', {
       method: 'POST',
       body: JSON.stringify({ name })
     });
-    return this.transformModelInfo(response);
+
+    return {
+      name,
+      digest: response.digest || '',
+      size: BigInt(response.size || 0),
+      details: {
+        format: response.format || 'gguf',
+        family: response.family || 'llama',
+        parameter_size: response.model_info?.['parameter_size'] || '7B',
+        quantization_level: response.model_info?.['general.quantization_version'] ? `Q${response.model_info['general.quantization_version']}` : 'Q4_0'
+      }
+    };
   }
 
   async listModels(): Promise<OllamaModelInfo[]> {
@@ -105,10 +116,9 @@ export class OllamaClient {
 
     return new Promise((resolve, reject) => {
       let lastStatus = '';
-      const chunks: Buffer[] = [];
+      const reader = response.body as unknown as Readable;
 
-      (response.body as unknown as Readable).on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
+      reader.on('data', (chunk: Buffer) => {
         try {
           const data = JSON.parse(chunk.toString());
           if (data.status) {
@@ -119,40 +129,20 @@ export class OllamaClient {
             reject(new OllamaError(data.error));
           }
         } catch (parseError) {
-          console.warn(`[OllamaClient] Failed to parse pull response chunk: ${chunk.toString()}`);
+          // Ignore parse errors for partial chunks
         }
       });
 
-      (response.body as unknown as Readable).on('end', async () => {
-        if (lastStatus === 'success') {
-          let retries = 5;
-          let delay = 1000;
-          
-          while (retries > 0) {
-            try {
-              await new Promise(resolve => setTimeout(resolve, delay));
-              
-              const modelInfo = await this.getModel(name);
-              if (modelInfo) {
-                resolve(modelInfo);
-                return;
-              }
-            } catch (error) {
-              retries--;
-              if (retries === 0) {
-                reject(new OllamaError(`Failed to get model info after pull: ${error instanceof Error ? error.message : String(error)}`));
-                return;
-              }
-              const jitter = Math.random() * 0.1 * delay;
-              delay = Math.min(delay * 2 + jitter, 10000);
-            }
-          }
-        } else {
-          reject(new OllamaError('Model pull did not complete successfully'));
+      reader.on('end', async () => {
+        try {
+          const modelInfo = await this.getModel(name);
+          resolve(modelInfo);
+        } catch (error) {
+          reject(new OllamaError(`Failed to get model info after pull: ${error instanceof Error ? error.message : String(error)}`));
         }
       });
 
-      (response.body as unknown as Readable).on('error', (error) => {
+      reader.on('error', (error) => {
         reject(new OllamaError(`Stream error: ${error.message}`));
       });
     });
