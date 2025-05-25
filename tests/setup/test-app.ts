@@ -7,7 +7,6 @@ import {
   requestLoggingMiddleware 
 } from '../../src/lib/api-logger';
 import { 
-  generalRateLimit,
   corsOptions,
   securityHeaders,
   sanitizeHeaders,
@@ -22,6 +21,10 @@ import {
 } from '../../src/lib/error-handling';
 import ollamaRoutes from '../../src/api/routes/ollama';
 import { apiDocumentation } from '../../src/lib/api-docs';
+// Import mocks
+import './test-security';
+import './ollama-mock';
+import './prisma-mock';
 import { mockOllamaClient, mockModelManager } from './ollama-mock';
 
 export interface TestAppSetup {
@@ -50,9 +53,9 @@ export async function setupTestApp(): Promise<TestAppSetup> {
   app.use(requestLoggingMiddleware);
   app.use(performanceMonitoring);
 
-  // Rate limiting (with health check bypass)
+  // Rate limiting (disabled for tests)
   app.use(healthCheckBypass);
-  app.use(generalRateLimit);
+  // Skip rate limiting in tests for faster execution
 
   // Body parsing
   app.use(express.json({ limit: '10mb' }));

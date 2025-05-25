@@ -183,13 +183,28 @@ const mockModelManager = {
   })
 };
 
-// Set up mocks
+// Set up mocks before any imports
 jest.mock('../../src/services/ollama/client', () => ({
   OllamaClient: jest.fn().mockImplementation(() => mockOllamaClient)
 }));
 
 jest.mock('../../src/services/ollama/model-manager', () => ({
   OllamaModelManager: jest.fn().mockImplementation(() => mockModelManager)
+}));
+
+jest.mock('../../src/services/ollama/errors', () => ({
+  OllamaError: class OllamaError extends Error {
+    constructor(message: string, public status?: number) {
+      super(message);
+      this.name = 'OllamaError';
+    }
+  },
+  ModelNotFoundError: class ModelNotFoundError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'ModelNotFoundError';
+    }
+  }
 }));
 
 export { mockOllamaClient, mockModelManager }; 
