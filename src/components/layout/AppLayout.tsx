@@ -1,19 +1,18 @@
+'use client'
+
 import React from 'react'
 import { clsx } from 'clsx'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 import { MainContent } from './MainContent'
-import { useAppStore } from '@store/app'
+import { useSimpleAppStore } from '@/store/simple-stores'
 
 interface AppLayoutProps {
   children: React.ReactNode
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
-  const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed)
-  const isLoading = useAppStore((state) => state.isLoading)
-  const loadingMessage = useAppStore((state) => state.loadingMessage)
-  const error = useAppStore((state) => state.error)
+  const { sidebarCollapsed, isLoading, loadingMessage, error, clearError } = useSimpleAppStore()
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
@@ -70,7 +69,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               </svg>
               <span className="flex-1">{error}</span>
               <button
-                onClick={() => useAppStore.getState().clearError()}
+                onClick={clearError}
                 className="text-white/80 hover:text-white transition-colors"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { useMemo } from 'react'
 
 export interface User {
   id: string
@@ -58,7 +59,7 @@ const initialState = {
   isAuthenticated: false,
   sidebarCollapsed: false,
   currentView: 'chat' as const,
-  isOnline: navigator.onLine,
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   connectionStatus: 'disconnected' as const,
   isLoading: false,
   loadingMessage: '',
@@ -138,15 +139,46 @@ export const useAppStore = create<AppState>()(
   )
 )
 
-// Selectors for optimized re-renders
-export const useUser = () => useAppStore((state) => state.user)
-export const useIsAuthenticated = () => useAppStore((state) => state.isAuthenticated)
-export const useSidebarCollapsed = () => useAppStore((state) => state.sidebarCollapsed)
-export const useCurrentView = () => useAppStore((state) => state.currentView)
-export const useConnectionStatus = () => useAppStore((state) => state.connectionStatus)
-export const useIsOnline = () => useAppStore((state) => state.isOnline)
-export const useLoading = () => useAppStore((state) => ({ 
-  isLoading: state.isLoading, 
-  message: state.loadingMessage 
-}))
-export const useError = () => useAppStore((state) => state.error)
+// Selectors for optimized re-renders with proper memoization
+export const useUser = () => {
+  const selector = useMemo(() => (state: AppState) => state.user, [])
+  return useAppStore(selector)
+}
+
+export const useIsAuthenticated = () => {
+  const selector = useMemo(() => (state: AppState) => state.isAuthenticated, [])
+  return useAppStore(selector)
+}
+
+export const useSidebarCollapsed = () => {
+  const selector = useMemo(() => (state: AppState) => state.sidebarCollapsed, [])
+  return useAppStore(selector)
+}
+
+export const useCurrentView = () => {
+  const selector = useMemo(() => (state: AppState) => state.currentView, [])
+  return useAppStore(selector)
+}
+
+export const useConnectionStatus = () => {
+  const selector = useMemo(() => (state: AppState) => state.connectionStatus, [])
+  return useAppStore(selector)
+}
+
+export const useIsOnline = () => {
+  const selector = useMemo(() => (state: AppState) => state.isOnline, [])
+  return useAppStore(selector)
+}
+
+export const useLoading = () => {
+  const selector = useMemo(() => (state: AppState) => ({ 
+    isLoading: state.isLoading, 
+    message: state.loadingMessage 
+  }), [])
+  return useAppStore(selector)
+}
+
+export const useError = () => {
+  const selector = useMemo(() => (state: AppState) => state.error, [])
+  return useAppStore(selector)
+}

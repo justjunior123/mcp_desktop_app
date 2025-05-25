@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { shallow } from 'zustand/shallow'
+import { useMemo } from 'react'
 
 export type ServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'installing'
 export type ModelStatus = 'available' | 'downloading' | 'downloaded' | 'error' | 'installing'
@@ -487,7 +489,7 @@ export const useMCPStore = create<MCPState>()(
           state.pagination.currentPage = 1 // Reset to first page
         }),
         
-        // Utility functions
+        // Utility functions (memoized for stable references)
         getInstalledServers: () => {
           const state = get()
           return state.servers.filter(s => state.installedServers.includes(s.id))
@@ -557,18 +559,47 @@ export const useMCPStore = create<MCPState>()(
   )
 )
 
-// Selectors for optimized re-renders
-export const useInstalledServers = () => useMCPStore((state) => 
-  state.servers.filter(s => state.installedServers.includes(s.id))
-)
-export const useConnectedServers = () => useMCPStore((state) => 
-  state.servers.filter(s => state.activeConnections.includes(s.id))
-)
-export const useDownloadedModels = () => useMCPStore((state) => 
-  state.models.filter(m => state.downloadedModels.includes(m.id))
-)
-export const useActiveDownloads = () => useMCPStore((state) => 
-  state.downloads.filter(d => d.status === 'downloading')
-)
-export const useStoreFilters = () => useMCPStore((state) => state.filters)
-export const useStorePagination = () => useMCPStore((state) => state.pagination)
+// Create memoized selectors to prevent infinite loops
+
+// Selectors for optimized re-renders with proper memoization
+export const useInstalledServers = () => {
+  const selector = useMemo(
+    () => (state: MCPState) => state.servers.filter(s => state.installedServers.includes(s.id)),
+    []
+  )
+  return useMCPStore(selector, shallow)
+}
+
+export const useConnectedServers = () => {
+  const selector = useMemo(
+    () => (state: MCPState) => state.servers.filter(s => state.activeConnections.includes(s.id)),
+    []
+  )
+  return useMCPStore(selector, shallow)
+}
+
+export const useDownloadedModels = () => {
+  const selector = useMemo(
+    () => (state: MCPState) => state.models.filter(m => state.downloadedModels.includes(m.id)),
+    []
+  )
+  return useMCPStore(selector, shallow)
+}
+
+export const useActiveDownloads = () => {
+  const selector = useMemo(
+    () => (state: MCPState) => state.downloads.filter(d => d.status === 'downloading'),
+    []
+  )
+  return useMCPStore(selector, shallow)
+}
+
+export const useStoreFilters = () => {
+  const selector = useMemo(() => (state: MCPState) => state.filters, [])
+  return useMCPStore(selector)
+}
+
+export const useStorePagination = () => {
+  const selector = useMemo(() => (state: MCPState) => state.pagination, [])
+  return useMCPStore(selector)
+}

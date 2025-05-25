@@ -1,3 +1,5 @@
+'use client'
+
 import React from 'react'
 import { clsx } from 'clsx'
 import {
@@ -12,15 +14,21 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline'
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid'
-import { useAppStore } from '@store/app'
-import { useChatStore, useFilteredSessions } from '@store/chat'
-import { useConnectedServers, useDownloadedModels } from '@store/mcp'
+import { 
+  useSimpleAppStore, 
+  useSimpleChatStore, 
+  useConnectedServers, 
+  useDownloadedModels, 
+  useFilteredSessions,
+  SimpleMCPServer,
+  SimpleModel
+} from '@/store/simple-stores'
 
 export const Sidebar: React.FC = () => {
-  const { sidebarCollapsed, currentView } = useAppStore()
-  const { createSession, setCurrentSession, currentSessionId } = useChatStore()
-  const connectedServers = useConnectedServers()
-  const downloadedModels = useDownloadedModels()
+  const { sidebarCollapsed, currentView } = useSimpleAppStore()
+  const { createSession, setCurrentSession, currentSessionId } = useSimpleChatStore()
+  const connectedServers = useConnectedServers() as SimpleMCPServer[]
+  const downloadedModels = useDownloadedModels() as SimpleModel[]
   const filteredSessions = useFilteredSessions()
   const [searchQuery, setSearchQuery] = React.useState('')
 
@@ -167,7 +175,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   currentSessionId,
   setCurrentSession,
 }) => {
-  const { pinSession, archiveSession, deleteSession } = useChatStore()
+  const { pinSession, archiveSession, deleteSession } = useSimpleChatStore()
 
   return (
     <div className="h-full flex flex-col">
@@ -340,7 +348,7 @@ const SessionItem: React.FC<SessionItemProps> = ({
   )
 }
 
-const ModelsSidebar: React.FC<{ models: any[] }> = ({ models }) => {
+const ModelsSidebar: React.FC<{ models: SimpleModel[] }> = ({ models }) => {
   return (
     <div className="p-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">

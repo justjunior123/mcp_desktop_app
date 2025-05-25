@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { useMemo } from 'react'
 
 export type MessageRole = 'user' | 'assistant' | 'system'
 export type MessageStatus = 'sending' | 'sent' | 'error' | 'streaming'
@@ -454,16 +455,49 @@ export const useChatStore = create<ChatState>()(
   )
 )
 
-// Selectors for optimized re-renders
-export const useCurrentSession = () => useChatStore((state) => 
-  state.sessions.find(s => s.id === state.currentSessionId)
-)
-export const useMessages = () => useChatStore((state) => state.messages)
-export const useStreamingState = () => useChatStore((state) => state.streaming)
-export const useInputValue = () => useChatStore((state) => state.inputValue)
-export const useSelectedModel = () => useChatStore((state) => state.selectedModel)
-export const useSelectedServer = () => useChatStore((state) => state.selectedServer)
-export const useChatSettings = () => useChatStore((state) => state.settings)
-export const useFilteredSessions = () => useChatStore((state) => 
-  state.searchQuery ? state.filteredSessions : state.sessions
-)
+// Selectors for optimized re-renders with proper memoization
+export const useCurrentSession = () => {
+  const selector = useMemo(
+    () => (state: ChatState) => state.sessions.find(s => s.id === state.currentSessionId),
+    []
+  )
+  return useChatStore(selector)
+}
+
+export const useMessages = () => {
+  const selector = useMemo(() => (state: ChatState) => state.messages, [])
+  return useChatStore(selector)
+}
+
+export const useStreamingState = () => {
+  const selector = useMemo(() => (state: ChatState) => state.streaming, [])
+  return useChatStore(selector)
+}
+
+export const useInputValue = () => {
+  const selector = useMemo(() => (state: ChatState) => state.inputValue, [])
+  return useChatStore(selector)
+}
+
+export const useSelectedModel = () => {
+  const selector = useMemo(() => (state: ChatState) => state.selectedModel, [])
+  return useChatStore(selector)
+}
+
+export const useSelectedServer = () => {
+  const selector = useMemo(() => (state: ChatState) => state.selectedServer, [])
+  return useChatStore(selector)
+}
+
+export const useChatSettings = () => {
+  const selector = useMemo(() => (state: ChatState) => state.settings, [])
+  return useChatStore(selector)
+}
+
+export const useFilteredSessions = () => {
+  const selector = useMemo(
+    () => (state: ChatState) => state.searchQuery ? state.filteredSessions : state.sessions,
+    []
+  )
+  return useChatStore(selector)
+}

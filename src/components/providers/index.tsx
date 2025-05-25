@@ -1,3 +1,4 @@
+'use client'
 import React from 'react'
 import { QueryProvider } from './QueryProvider'
 import { ThemeProvider } from '@lib/hooks/useTheme'
