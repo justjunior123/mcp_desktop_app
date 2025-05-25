@@ -340,7 +340,7 @@ describe('API Security', () => {
     it('should mask internal error details in production', async () => {
       // This test simulates production environment
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
+      (process.env as any).NODE_ENV = 'production';
 
       try {
         const response = await request(app)
@@ -351,7 +351,7 @@ describe('API Security', () => {
           expect(response.body.error.details).not.toHaveProperty('stack');
         }
       } finally {
-        process.env.NODE_ENV = originalEnv;
+        (process.env as any).NODE_ENV = originalEnv;
       }
     });
   });
@@ -379,7 +379,8 @@ describe('API Security', () => {
       ];
 
       for (const suspiciousRequest of suspiciousRequests) {
-        const response = await request(app)[suspiciousRequest.method.toLowerCase()](
+        const method = suspiciousRequest.method.toLowerCase() as 'get' | 'post' | 'put' | 'delete';
+        const response = await (request(app) as any)[method](
           suspiciousRequest.path
         );
 

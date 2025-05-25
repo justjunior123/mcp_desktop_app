@@ -132,14 +132,13 @@ export interface MCPState {
   updateModel: (modelId: string, updates: Partial<Model>) => void
   removeModel: (modelId: string) => void
   setModelStatus: (modelId: string, status: ModelStatus, error?: string) => void
-  updateDownloadProgress: (modelId: string, progress: number) => void
   
   // Actions - Installation/Download
   startServerInstallation: (serverId: string) => void
   updateInstallationProgress: (serverId: string, progress: number) => void
   completeInstallation: (serverId: string, success: boolean, error?: string) => void
   startModelDownload: (modelId: string) => void
-  updateDownloadProgress: (modelId: string, progress: number, speed: number, downloadedSize: number) => void
+  updateDownloadProgress: (modelId: string, progress: number, speed?: number, downloadedSize?: number) => void
   completeDownload: (modelId: string, success: boolean, error?: string) => void
   cancelDownload: (modelId: string) => void
   
@@ -348,12 +347,6 @@ export const useMCPStore = create<MCPState>()(
           }
         }),
         
-        updateDownloadProgress: (modelId, progress) => set((state) => {
-          const model = state.models.find(m => m.id === modelId)
-          if (model) {
-            model.downloadProgress = progress
-          }
-        }),
         
         // Installation/Download tracking
         startServerInstallation: (serverId) => set((state) => {
@@ -410,12 +403,12 @@ export const useMCPStore = create<MCPState>()(
           }
         }),
         
-        updateDownloadProgress: (modelId, progress, speed, downloadedSize) => set((state) => {
+        updateDownloadProgress: (modelId: string, progress: number, speed?: number, downloadedSize?: number) => set((state) => {
           const download = state.downloads.find(d => d.modelId === modelId)
           if (download) {
             download.progress = progress
-            download.speed = speed
-            download.downloadedSize = downloadedSize
+            if (speed !== undefined) download.speed = speed
+            if (downloadedSize !== undefined) download.downloadedSize = downloadedSize
           }
           
           // Also update the model
