@@ -27,6 +27,7 @@ import {
   securityAuditLogger
 } from '../../lib/security';
 import { OllamaError } from '../../services/ollama/errors';
+import { ModelNotFoundError } from '../../services/ollama/errors';
 
 // Types are now imported from validation module
 interface LegacyChatRequest {
@@ -459,6 +460,13 @@ const chat: RequestHandler<{}, any, ChatRequest> = async (req: RequestWithCorrel
       
       res.status(statusCode).json(createErrorResponse(
         errorCode,
+        error.message,
+        { modelName: req.body.model, duration },
+        req.correlationId
+      ));
+    } else if (error instanceof ModelNotFoundError) {
+      res.status(404).json(createErrorResponse(
+        APIErrorCode.MODEL_NOT_FOUND,
         error.message,
         { modelName: req.body.model, duration },
         req.correlationId

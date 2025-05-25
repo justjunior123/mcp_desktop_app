@@ -1,7 +1,10 @@
+import '../setup/ollama-mock';
+import '../setup/prisma-mock';
 import request from 'supertest';
 import { Express } from 'express';
 import { setupTestApp } from '../setup/test-app';
 import { APIErrorCode } from '../../src/lib/api-logger';
+import { validChatRequest } from '../setup/chat-api.test.data';
 
 describe('Chat API', () => {
   let app: Express;
@@ -20,20 +23,6 @@ describe('Chat API', () => {
   });
 
   describe('POST /api/chat', () => {
-    const validChatRequest = {
-      model: 'llama3.2',
-      messages: [
-        {
-          role: 'user',
-          content: 'Hello, how are you?'
-        }
-      ],
-      options: {
-        temperature: 0.7,
-        max_tokens: 100
-      }
-    };
-
     describe('Valid Requests', () => {
       it('should handle basic chat request', async () => {
         const response = await request(app)

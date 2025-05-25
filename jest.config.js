@@ -32,6 +32,18 @@ module.exports = {
   ],
   projects: [
     {
+      displayName: 'api',
+      testEnvironment: 'node',
+      testMatch: ['**/tests/api/**/*.test.ts', '**/tests/api/**/*.spec.ts'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.node.js'],
+      transform: {
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          tsconfig: 'tsconfig.json',
+          useESM: false
+        }]
+      }
+    },
+    {
       displayName: 'unit',
       testEnvironment: 'node',
       testMatch: ['**/tests/unit/**/*.test.ts', '**/tests/unit/**/*.spec.ts', '**/tests/e2e/**/*.e2e.test.ts'],
