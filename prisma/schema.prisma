@@ -13,8 +13,41 @@ model User {
   name         String
   email        String?      @unique
   chatSessions ChatSession[]
+  apiRequests  APIRequest[]
+  
+  // User preferences for chat
+  defaultModelId String?
+  defaultModel   OllamaModel? @relation("UserDefaultModel", fields: [defaultModelId], references: [id])
+  
+  // Chat preferences (defaults for new sessions)
+  defaultTemperature Float?   @default(0.7)
+  defaultTopP        Float?   @default(0.9)
+  defaultTopK        Int?     @default(40)
+  defaultMaxTokens   Int?
+  defaultSystemPrompt String?
+  
+  // User settings
+  theme          String   @default("light") // light, dark, auto
+  language       String   @default("en")
+  timezone       String   @default("UTC")
+  
+  // Usage tracking
+  totalSessions  Int      @default(0)
+  totalMessages  Int      @default(0)
+  totalTokens    BigInt   @default(0)
+  lastActiveAt   DateTime @default(now())
+  
+  // Security and account
+  isActive       Boolean  @default(true)
+  lastLoginAt    DateTime?
+  loginCount     Int      @default(0)
+  
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+  
+  // Indexes
+  @@index([email])
+  @@index([isActive, lastActiveAt])
 }
 
 model Settings {
@@ -56,6 +89,26 @@ model OllamaModel {
   downloadProgress Float @default(0)
   status      String   @default("NOT_DOWNLOADED") // NOT_DOWNLOADED, DOWNLOADING, READY, ERROR
   error       String?
+  
+  // Enhanced model metadata
+  description String?
+  tags        String   @default("[]") // JSON array of tags
+  license     String?
+  homepage    String?
+  
+  // Performance and capability tracking
+  contextLength Int?     // Maximum context window
+  capabilities  String   @default("[]") // JSON array: ["chat", "completion", "embedding"]
+  
+  // Usage statistics
+  usageCount    Int      @default(0) // Number of times used
+  avgResponseTime Float? // Average response time in ms
+  successRate   Float?   // Success rate percentage
+  lastUsedAt    DateTime?
+  
+  // Cost tracking (if applicable)
+  costPerToken  Float?   @default(0.0)
+  totalCost     Float?   @default(0.0)
 
   // Model configuration
   configuration OllamaModelConfiguration?
@@ -63,6 +116,12 @@ model OllamaModel {
   // Relations
   chatSessions ChatSession[]
   servers      MCPServer[]
+  defaultForUsers User[] @relation("UserDefaultModel")  // Users who have this as default model
+  
+  // Indexes for performance
+  @@index([status, isDownloaded])
+  @@index([name, status])
+  @@index([usageCount, lastUsedAt])
 }
 
 model OllamaModelConfiguration {
@@ -96,21 +155,127 @@ model ChatSession {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   messages    Message[]
+  apiRequests APIRequest[]
+  
+  // Session configuration (matches API validation)
+  systemPrompt String?
+  temperature  Float?   @default(0.7)
+  topP         Float?   @default(0.9)
+  topK         Int?     @default(40)
+  repeatPenalty Float?  @default(1.1)
+  presencePenalty Float?
+  frequencyPenalty Float?
+  maxTokens    Int?
+  stopSequences String  @default("[]") // JSON array to match validation
+  
+  // Session metadata
+  status       String   @default("active") // active, archived, deleted
+  messageCount Int      @default(0)
+  totalTokens  Int      @default(0)
+  lastActivity DateTime @default(now())
+  
+  // Performance tracking
+  avgResponseTime Float?
+  totalCost       Float?  @default(0.0)
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  // Indexes for performance
+  @@index([userId, lastActivity])
+  @@index([modelId, status])
+  @@index([status, lastActivity])
 }
 
 model Message {
   id            String   @id @default(cuid())
   chatSessionId String
   chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
-  role          String   // system, user, assistant
-  content       String
+  role          String   // system, user, assistant (matches validation enum)
+  content       String   // Length validated at API level
+  
+  // Message metadata
+  tokenCount    Int?     // Calculated token count for this message
+  finishReason  String?  // stop, length, function_call, etc.
+  model         String?  // Model used for this specific message (may differ in session)
+  
+  // Generation metadata (from Ollama response)
+  totalDuration Int?     // Total time in nanoseconds
+  loadDuration  Int?     // Model load time in nanoseconds
+  promptEvalDuration Int? // Prompt evaluation time in nanoseconds
+  evalDuration  Int?     // Generation time in nanoseconds
+  promptEvalCount Int?   // Number of tokens in prompt
+  evalCount     Int?     // Number of tokens generated
+  
+  // API request metadata
+  requestId     String?  // Correlation ID from API request
+  responseTime  Int?     // Response time in milliseconds
+  retryCount    Int      @default(0)
+  
+  // Content analysis
+  sentiment     String?  // positive, negative, neutral
+  language      String?  // detected language
+  
+  // Soft delete support
+  isDeleted     Boolean  @default(false)
+  deletedAt     DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Indexes for performance and queries
+  @@index([chatSessionId, createdAt])
+  @@index([role, createdAt])
+  @@index([requestId])
+  @@index([isDeleted, chatSessionId])
+}
+
+// New model for API request analytics and monitoring
+model APIRequest {
+  id            String   @id @default(cuid())
+  correlationId String   @unique // Matches API logger correlation ID
+  
+  // Request details
+  endpoint      String   // /api/ollama/chat, /api/ollama/models, etc.
+  method        String   // GET, POST, etc.
+  userAgent     String?
+  ipAddress     String?
+  
+  // Related entities
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  chatSessionId String?
+  chatSession   ChatSession? @relation(fields: [chatSessionId], references: [id])
+  modelName     String?
+  
+  // Request payload metadata
+  messageCount  Int?     // Number of messages in request
+  requestSize   Int?     // Size in bytes
+  hasStream     Boolean  @default(false)
+  
+  // Response details
+  statusCode    Int
+  responseSize  Int?     // Size in bytes
+  responseTime  Int      // Response time in milliseconds
+  
+  // Performance metrics
+  memoryUsage   Float?   // MB
+  cpuUsage      Float?   // Percentage
+  
+  // Error tracking
+  errorCode     String?  // API error code if failed
+  errorMessage  String?  // Error message if failed
+  
+  // Security metadata
+  rateLimited   Boolean  @default(false)
+  blocked       Boolean  @default(false)
+  
   createdAt     DateTime @default(now())
   
-  // Generation metadata
-  totalDuration Int?
-  loadDuration  Int?
-  promptEvalDuration Int?
-  evalDuration  Int?
+  // Indexes for analytics queries
+  @@index([endpoint, createdAt])
+  @@index([userId, createdAt])
+  @@index([statusCode, createdAt])
+  @@index([correlationId])
+  @@index([modelName, createdAt])
 } 

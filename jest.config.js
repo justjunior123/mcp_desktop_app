@@ -68,6 +68,18 @@ module.exports = {
       }
     },
     {
+      displayName: 'database',
+      testEnvironment: 'node',
+      testMatch: ['**/tests/database/**/*.test.ts', '**/tests/database/**/*.spec.ts'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.node.js'],
+      transform: {
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          tsconfig: 'tsconfig.json',
+          useESM: false
+        }]
+      }
+    },
+    {
       displayName: 'jsdom',
       testEnvironment: 'jsdom',
       testMatch: ['**/tests/**/*.test.tsx', '**/tests/**/*.spec.tsx'],
