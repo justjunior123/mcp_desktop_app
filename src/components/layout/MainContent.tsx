@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useAppStore } from '@store/app'
+import { useAppStore } from '@/store/app'
 
 interface MainContentProps {
   children: React.ReactNode
