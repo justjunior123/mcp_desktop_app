@@ -112,7 +112,7 @@ const listModels: RequestHandler = async (req: RequestWithCorrelationId, res): P
     
     logger.info('Models listed successfully', { 
       modelCount: serializedModels.length,
-      modelNames: serializedModels.map(m => m?.name).filter(Boolean)
+      modelNames: serializedModels.map((m: any) => m?.name).filter(Boolean)
     });
     
     res.json(createSuccessResponse(
@@ -124,7 +124,7 @@ const listModels: RequestHandler = async (req: RequestWithCorrelationId, res): P
       errorType: error instanceof OllamaError ? 'OllamaError' : 'UnknownError'
     });
     
-    const statusCode = error instanceof OllamaError && error.status ? error.status : 500;
+    const statusCode = error instanceof OllamaError && error.statusCode ? error.statusCode : 500;
     const errorCode = error instanceof OllamaError ? APIErrorCode.OLLAMA_SERVICE_UNAVAILABLE : APIErrorCode.INTERNAL_SERVER_ERROR;
     
     res.status(statusCode).json(createErrorResponse(
@@ -255,7 +255,7 @@ const pullModel: RequestHandler<ModelParams> = async (req: RequestWithCorrelatio
     
     const duration = Date.now() - startTime;
     logger.modelOperation('pull_complete', req.params.name, { 
-      duration: `${duration}ms`,
+      duration: duration,
       success: true
     });
   } catch (error) {
@@ -449,7 +449,7 @@ const chat: RequestHandler<{}, any, ChatRequest> = async (req: RequestWithCorrel
     logger.chatError(req.body.model, error, { duration });
     
     if (error instanceof OllamaError) {
-      const statusCode = error.status || 500;
+      const statusCode = error.statusCode || 500;
       let errorCode = APIErrorCode.OLLAMA_REQUEST_FAILED;
       
       if (error.message.includes('timeout')) {
@@ -614,7 +614,7 @@ const chatStream: RequestHandler<{}, any, ChatRequest> = async (req: RequestWith
     
     if (!res.headersSent) {
       if (error instanceof OllamaError) {
-        const statusCode = error.status || 500;
+        const statusCode = error.statusCode || 500;
         let errorCode = APIErrorCode.OLLAMA_REQUEST_FAILED;
         
         if (error.message.includes('timeout')) {

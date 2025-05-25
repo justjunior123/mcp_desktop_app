@@ -16,20 +16,32 @@ export const openApiSpec = {
       - Managing AI models (Ollama)
       - Chat interactions with models
       - Model configuration and lifecycle management
+      - MCP protocol integration
+      - Health monitoring and system status
       
       ## Authentication
       Currently no authentication is required for local development.
       
       ## Rate Limiting
-      - General API calls: 100 requests per 15 minutes per IP
-      - Chat operations: 20 requests per minute per IP
-      - Model operations: 10 requests per 5 minutes per IP
+      - General API calls: 100 requests per minute per IP
+      - Chat operations: 30 requests per minute per IP
+      - Model operations: 10 requests per minute per IP
       
       ## Error Handling
       All errors follow a standardized format with correlation IDs for tracking.
+      Each request gets a unique correlation ID that can be used to track the request
+      across all services and logs.
       
       ## Streaming
-      Streaming endpoints use Server-Sent Events (SSE) for real-time data.
+      Streaming endpoints use Server-Sent Events (SSE) for real-time data including
+      model download progress and chat response streaming.
+      
+      ## Security Features
+      - Input validation using Zod schemas
+      - Request sanitization (XSS protection)
+      - CORS configuration for allowed origins
+      - Comprehensive audit logging
+      - Timeout handling for all requests
     `,
     version: '1.0.0',
     contact: {
@@ -48,10 +60,48 @@ export const openApiSpec = {
     }
   ],
   paths: {
+    '/health': {
+      get: {
+        summary: 'Health check',
+        description: 'Check the overall health of the application and Ollama service.',
+        operationId: 'healthCheck',
+        tags: ['System'],
+        responses: {
+          '200': {
+            description: 'Service is healthy',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'ok' },
+                    timestamp: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          },
+          '503': {
+            description: 'Service is unhealthy',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'error' },
+                    message: { type: 'string', example: 'Ollama service is not available' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     '/api/models': {
       get: {
         summary: 'List all models',
-        description: 'Retrieve a list of all available models, both downloaded and available for download.',
+        description: 'Retrieve a list of all available models, both downloaded and available for download. This endpoint syncs with Ollama before returning the list.',
         operationId: 'listModels',
         tags: ['Models'],
         responses: {
@@ -80,6 +130,64 @@ export const openApiSpec = {
             }
           }
         }
+      },
+      post: {
+        summary: 'Create/pull a model',
+        description: 'Download and install a new model from the Ollama registry.',
+        operationId: 'createModel',
+        tags: ['Models'],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: {
+                    type: 'string',
+                    pattern: '^[a-zA-Z0-9][a-zA-Z0-9._:-]*$',
+                    maxLength: 100,
+                    description: 'The name of the model to pull'
+                  },
+                  configuration: {
+                    type: 'object',
+                    description: 'Optional initial configuration for the model'
+                  }
+                },
+                example: {
+                  name: 'mistral:latest'
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Model pull started',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SuccessResponse' }
+              }
+            }
+          },
+          '400': {
+            description: 'Invalid request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          '500': {
+            description: 'Internal server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
       }
     },
     '/api/models/{name}': {
@@ -98,7 +206,7 @@ export const openApiSpec = {
               type: 'string',
               pattern: '^[a-zA-Z0-9][a-zA-Z0-9._:-]*$',
               maxLength: 100,
-              example: 'llama3.2'
+              example: 'mistral:latest'
             }
           }
         ],
@@ -119,8 +227,61 @@ export const openApiSpec = {
               }
             }
           },
-          '500': {
-            description: 'Internal server error',
+          '503': {
+            description: 'Ollama service unavailable',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      },
+      put: {
+        summary: 'Update model',
+        description: 'Update model configuration settings.',
+        operationId: 'updateModel',
+        tags: ['Models'],
+        parameters: [
+          {
+            name: 'name',
+            in: 'path',
+            required: true,
+            description: 'The name of the model to update',
+            schema: {
+              type: 'string',
+              pattern: '^[a-zA-Z0-9][a-zA-Z0-9._:-]*$',
+              maxLength: 100
+            }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ModelConfigUpdate' }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Model updated successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ModelResponse' }
+              }
+            }
+          },
+          '400': {
+            description: 'Invalid configuration',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          '404': {
+            description: 'Model not found',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -148,13 +309,8 @@ export const openApiSpec = {
           }
         ],
         responses: {
-          '200': {
-            description: 'Model deleted successfully',
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/SuccessResponse' }
-              }
-            }
+          '204': {
+            description: 'Model deleted successfully'
           },
           '404': {
             description: 'Model not found',
@@ -177,8 +333,8 @@ export const openApiSpec = {
     },
     '/api/models/{name}/pull': {
       post: {
-        summary: 'Pull a model',
-        description: 'Download and install a model. Returns a stream of progress updates.',
+        summary: 'Pull a model with progress',
+        description: 'Download and install a model with real-time progress updates via Server-Sent Events.',
         operationId: 'pullModel',
         tags: ['Models'],
         parameters: [
@@ -210,11 +366,11 @@ export const openApiSpec = {
                   },
                   complete: {
                     summary: 'Pull complete',
-                    value: 'data: {"status": "complete"}\n\n'
+                    value: 'data: {"status": "complete", "correlationId": "req_123abc", "timestamp": "2024-01-15T12:35:00.000Z"}\n\n'
                   },
                   error: {
                     summary: 'Pull error',
-                    value: 'data: {"status": "error", "error": {"code": "OLLAMA_REQUEST_FAILED", "message": "Model not found"}}\n\n'
+                    value: 'data: {"status": "error", "error": {"code": "OLLAMA_REQUEST_FAILED", "message": "Model not found", "correlationId": "req_123abc"}}\n\n'
                   }
                 }
               }
@@ -271,12 +427,173 @@ export const openApiSpec = {
             description: 'Configuration updated successfully',
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/ModelResponse' }
+                schema: { $ref: '#/components/schemas/SuccessResponse' }
               }
             }
           },
           '400': {
             description: 'Invalid configuration',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          '404': {
+            description: 'Model not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/models/{name}/chat': {
+      post: {
+        summary: 'Chat with a specific model',
+        description: 'Send a chat request to a specific model using its configured settings.',
+        operationId: 'chatWithModel',
+        tags: ['Chat'],
+        parameters: [
+          {
+            name: 'name',
+            in: 'path',
+            required: true,
+            description: 'The name of the model to chat with',
+            schema: {
+              type: 'string',
+              pattern: '^[a-zA-Z0-9][a-zA-Z0-9._:-]*$',
+              maxLength: 100
+            }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['messages'],
+                properties: {
+                  messages: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/ChatMessage' },
+                    minItems: 1,
+                    maxItems: 100,
+                    description: 'The conversation messages'
+                  },
+                  options: {
+                    $ref: '#/components/schemas/ChatOptions'
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Chat response',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ChatResponse' }
+              }
+            }
+          },
+          '400': {
+            description: 'Invalid request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          '404': {
+            description: 'Model not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          '503': {
+            description: 'Ollama service unavailable',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/models/{name}/chat/stream': {
+      post: {
+        summary: 'Streaming chat with a specific model',
+        description: 'Send a chat request to a specific model and receive streaming response chunks.',
+        operationId: 'chatStreamWithModel',
+        tags: ['Chat'],
+        parameters: [
+          {
+            name: 'name',
+            in: 'path',
+            required: true,
+            description: 'The name of the model to chat with',
+            schema: {
+              type: 'string',
+              pattern: '^[a-zA-Z0-9][a-zA-Z0-9._:-]*$',
+              maxLength: 100
+            }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['messages'],
+                properties: {
+                  messages: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/ChatMessage' },
+                    minItems: 1,
+                    maxItems: 100,
+                    description: 'The conversation messages'
+                  },
+                  options: {
+                    $ref: '#/components/schemas/ChatOptions'
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Streaming chat response',
+            content: {
+              'text/event-stream': {
+                schema: {
+                  type: 'string',
+                  description: 'Server-Sent Events stream with chat response chunks'
+                },
+                examples: {
+                  chunk: {
+                    summary: 'Response chunk',
+                    value: 'data: {"model": "mistral:latest", "message": {"role": "assistant", "content": "Hello"}, "done": false}\n\n'
+                  },
+                  complete: {
+                    summary: 'Response complete',
+                    value: 'data: {"done": true}\n\n'
+                  }
+                }
+              }
+            }
+          },
+          '400': {
+            description: 'Invalid request',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -386,7 +703,7 @@ export const openApiSpec = {
                 examples: {
                   chunk: {
                     summary: 'Response chunk',
-                    value: 'data: {"model": "llama3.2", "message": {"role": "assistant", "content": "Hello"}, "done": false}\n\n'
+                    value: 'data: {"model": "mistral:latest", "message": {"role": "assistant", "content": "Hello"}, "done": false}\n\n'
                   },
                   complete: {
                     summary: 'Response complete',
@@ -414,6 +731,180 @@ export const openApiSpec = {
           },
           '429': {
             description: 'Rate limit exceeded',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/mcp': {
+      post: {
+        summary: 'MCP protocol endpoint',
+        description: 'Direct interface to the Model Context Protocol for tool execution and session management.',
+        operationId: 'mcpProtocol',
+        tags: ['MCP'],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    description: 'Request ID'
+                  },
+                  prompt: {
+                    type: 'string',
+                    description: 'Prompt or command to execute'
+                  },
+                  model: {
+                    type: 'string',
+                    description: 'Model to use for the request'
+                  }
+                },
+                example: {
+                  id: 'request-123',
+                  prompt: 'Execute file listing tool',
+                  model: 'mistral:latest'
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'MCP response',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  description: 'MCP protocol response'
+                }
+              }
+            }
+          },
+          '500': {
+            description: 'MCP service error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/tools': {
+      get: {
+        summary: 'List available tools',
+        description: 'Retrieve a list of all available MCP tools (currently placeholder).',
+        operationId: 'listTools',
+        tags: ['Tools'],
+        responses: {
+          '200': {
+            description: 'List of tools',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        description: 'Tool definition'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/tools/{name}': {
+      get: {
+        summary: 'Get tool details',
+        description: 'Retrieve detailed information about a specific tool (currently placeholder).',
+        operationId: 'getTool',
+        tags: ['Tools'],
+        parameters: [
+          {
+            name: 'name',
+            in: 'path',
+            required: true,
+            description: 'The name of the tool',
+            schema: {
+              type: 'string'
+            }
+          }
+        ],
+        responses: {
+          '404': {
+            description: 'Tool not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/prompts': {
+      get: {
+        summary: 'List available prompts',
+        description: 'Retrieve a list of all available MCP prompts (currently placeholder).',
+        operationId: 'listPrompts',
+        tags: ['Prompts'],
+        responses: {
+          '200': {
+            description: 'List of prompts',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        description: 'Prompt definition'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/prompts/{name}': {
+      get: {
+        summary: 'Get prompt details',
+        description: 'Retrieve detailed information about a specific prompt (currently placeholder).',
+        operationId: 'getPrompt',
+        tags: ['Prompts'],
+        parameters: [
+          {
+            name: 'name',
+            in: 'path',
+            required: true,
+            description: 'The name of the prompt',
+            schema: {
+              type: 'string'
+            }
+          }
+        ],
+        responses: {
+          '404': {
+            description: 'Prompt not found',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -467,6 +958,18 @@ export const openApiSpec = {
             minimum: 1,
             description: 'Limits the number of tokens considered at each step'
           },
+          repeat_penalty: {
+            type: 'number',
+            minimum: 0.1,
+            maximum: 2.0,
+            description: 'Penalty for repeating tokens'
+          },
+          num_ctx: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 100000,
+            description: 'Context window size'
+          },
           max_tokens: {
             type: 'integer',
             minimum: 1,
@@ -486,6 +989,8 @@ export const openApiSpec = {
         example: {
           temperature: 0.7,
           top_p: 0.9,
+          top_k: 40,
+          repeat_penalty: 1.1,
           max_tokens: 2000
         }
       },
@@ -511,7 +1016,7 @@ export const openApiSpec = {
           }
         },
         example: {
-          model: 'llama3.2',
+          model: 'mistral:latest',
           messages: [
             {
               role: 'user',
@@ -544,6 +1049,14 @@ export const openApiSpec = {
               done: {
                 type: 'boolean',
                 description: 'Whether the response is complete'
+              },
+              eval_count: {
+                type: 'integer',
+                description: 'Number of tokens evaluated'
+              },
+              eval_duration: {
+                type: 'integer',
+                description: 'Evaluation duration in nanoseconds'
               }
             }
           },
@@ -566,35 +1079,53 @@ export const openApiSpec = {
             minimum: 0,
             maximum: 2
           },
-          topP: {
+          top_p: {
             type: 'number',
             minimum: 0,
             maximum: 1
           },
-          topK: {
+          top_k: {
             type: 'integer',
             minimum: 1
           },
-          maxTokens: {
+          repeat_penalty: {
+            type: 'number',
+            minimum: 0.1,
+            maximum: 2.0
+          },
+          num_ctx: {
             type: 'integer',
             minimum: 1,
             maximum: 100000
           },
-          systemPrompt: {
+          max_tokens: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 100000
+          },
+          system_prompt: {
             type: 'string',
-            maxLength: 32000
+            maxLength: 32000,
+            description: 'System prompt for the model'
           }
         },
         example: {
           temperature: 0.8,
-          topP: 0.9,
-          maxTokens: 4000,
-          systemPrompt: 'You are a helpful assistant.'
+          top_p: 0.9,
+          top_k: 40,
+          repeat_penalty: 1.1,
+          num_ctx: 4096,
+          max_tokens: 4000,
+          system_prompt: 'You are a helpful assistant.'
         }
       },
       Model: {
         type: 'object',
         properties: {
+          id: {
+            type: 'string',
+            description: 'Unique model identifier'
+          },
           name: {
             type: 'string',
             description: 'Model name'
@@ -627,6 +1158,23 @@ export const openApiSpec = {
           configuration: {
             type: 'object',
             description: 'Model configuration settings'
+          },
+          capabilities: {
+            type: 'array',
+            items: {
+              type: 'string'
+            },
+            description: 'Model capabilities (e.g., chat, completion)'
+          },
+          createdAt: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Model creation timestamp'
+          },
+          updatedAt: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Model last update timestamp'
           }
         }
       },
@@ -702,6 +1250,19 @@ export const openApiSpec = {
             properties: {
               code: {
                 type: 'string',
+                enum: [
+                  'MODEL_NOT_FOUND',
+                  'MODEL_NOT_READY',
+                  'OLLAMA_SERVICE_UNAVAILABLE',
+                  'OLLAMA_REQUEST_FAILED',
+                  'OLLAMA_TIMEOUT',
+                  'RATE_LIMIT_EXCEEDED',
+                  'INVALID_REQUEST',
+                  'INTERNAL_SERVER_ERROR',
+                  'NOT_FOUND',
+                  'SERVICE_UNAVAILABLE',
+                  'GATEWAY_TIMEOUT'
+                ],
                 description: 'Error code for programmatic handling'
               },
               message: {
@@ -744,10 +1305,40 @@ export const openApiSpec = {
         schema: {
           type: 'string'
         }
+      },
+      'X-RateLimit-Limit': {
+        description: 'Request rate limit for the endpoint',
+        schema: {
+          type: 'integer'
+        }
+      },
+      'X-RateLimit-Remaining': {
+        description: 'Remaining requests in the current window',
+        schema: {
+          type: 'integer'
+        }
+      },
+      'X-RateLimit-Reset': {
+        description: 'Timestamp when the rate limit resets',
+        schema: {
+          type: 'integer'
+        }
+      }
+    },
+    securitySchemes: {
+      ApiKey: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-API-Key',
+        description: 'API key for authentication (future use)'
       }
     }
   },
   tags: [
+    {
+      name: 'System',
+      description: 'System health and status operations'
+    },
     {
       name: 'Models',
       description: 'Operations for managing AI models'
@@ -755,6 +1346,18 @@ export const openApiSpec = {
     {
       name: 'Chat',
       description: 'Operations for chatting with AI models'
+    },
+    {
+      name: 'MCP',
+      description: 'Model Context Protocol operations'
+    },
+    {
+      name: 'Tools',
+      description: 'MCP tool management (planned)'
+    },
+    {
+      name: 'Prompts',
+      description: 'MCP prompt management (planned)'
     }
   ]
 };
@@ -766,7 +1369,7 @@ export const generateApiDocsHtml = () => {
 <html>
 <head>
   <title>MCP Desktop API Documentation</title>
-  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui.css" />
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
   <style>
     html {
       box-sizing: border-box;
@@ -780,12 +1383,43 @@ export const generateApiDocsHtml = () => {
       margin:0;
       background: #fafafa;
     }
+    .swagger-ui .topbar {
+      background-color: #1f2937;
+    }
+    .swagger-ui .topbar .download-url-wrapper {
+      display: none;
+    }
+    .swagger-ui .info .title {
+      color: #1f2937;
+    }
+    .swagger-ui .scheme-container {
+      background-color: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .api-info {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .api-info h1 {
+      margin: 0 0 10px 0;
+      font-size: 2.5em;
+    }
+    .api-info p {
+      margin: 5px 0;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui-bundle.js"></script>
-  <script src="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui-standalone-preset.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function() {
       const ui = SwaggerUIBundle({
@@ -799,8 +1433,35 @@ export const generateApiDocsHtml = () => {
         plugins: [
           SwaggerUIBundle.plugins.DownloadUrl
         ],
-        layout: "StandaloneLayout"
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 1,
+        displayRequestDuration: true,
+        tryItOutEnabled: true,
+        filter: true,
+        showExtensions: true,
+        showCommonExtensions: true,
+        validatorUrl: null,
+        docExpansion: 'list',
+        operationsSorter: 'alpha',
+        tagsSorter: 'alpha'
       });
+      
+      // Add custom header
+      setTimeout(() => {
+        const infoSection = document.querySelector('.swagger-ui .info');
+        if (infoSection && !document.querySelector('.api-info')) {
+          const header = document.createElement('div');
+          header.className = 'api-info';
+          header.innerHTML = \`
+            <h1>🚀 MCP Desktop API</h1>
+            <p><strong>Base URL:</strong> http://localhost:3100</p>
+            <p><strong>Version:</strong> 1.0.0</p>
+            <p><strong>Status:</strong> Development</p>
+          \`;
+          infoSection.parentNode.insertBefore(header, infoSection);
+        }
+      }, 500);
     };
   </script>
 </body>

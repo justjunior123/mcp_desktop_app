@@ -29,7 +29,7 @@ export const globalErrorHandler = (
   
   // Handle specific error types
   if (error instanceof OllamaError) {
-    const statusCode = error.status || 500;
+    const statusCode = error.statusCode || 500;
     let apiErrorCode = APIErrorCode.OLLAMA_REQUEST_FAILED;
     
     if (error.message.includes('timeout')) {
@@ -248,7 +248,7 @@ export const performanceMonitoring = (req: RequestWithCorrelationId, res: Respon
     // Log slow requests
     if (duration > 5000) { // 5 seconds
       logger.warn('Slow request detected', {
-        duration: `${duration}ms`,
+        duration: duration,
         method: req.method,
         url: req.originalUrl,
         statusCode
@@ -261,7 +261,7 @@ export const performanceMonitoring = (req: RequestWithCorrelationId, res: Respon
         statusCode,
         method: req.method,
         url: req.originalUrl,
-        duration: `${duration}ms`
+        duration: duration
       });
     }
     
@@ -271,7 +271,7 @@ export const performanceMonitoring = (req: RequestWithCorrelationId, res: Respon
         method: req.method,
         url: req.originalUrl,
         statusCode,
-        duration: `${duration}ms`,
+        duration: duration,
         contentLength: res.get('content-length') || 0
       });
     }

@@ -147,7 +147,7 @@ export class APILogger {
     const start = Date.now();
     return () => {
       const duration = Date.now() - start;
-      this.info(`Timer: ${label}`, { duration: `${duration}ms` });
+      this.info(`Timer: ${label}`, { duration: duration });
     };
   }
   
@@ -164,7 +164,7 @@ export class APILogger {
     this.info('Chat response completed', {
       modelName,
       responseLength,
-      duration: `${duration}ms`,
+      duration: duration,
       ...meta
     });
   }
@@ -195,7 +195,7 @@ export class APILogger {
     this.info('Stream completed', {
       modelName,
       totalChunks,
-      duration: `${duration}ms`,
+      duration: duration,
       ...meta
     });
   }

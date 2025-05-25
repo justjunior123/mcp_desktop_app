@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { createLogger } from '../src/utils/logger';
 import { serializeBigInt } from '../src/utils/serialization';
+import { generateApiDocsHtml, openApiSpec } from '../src/lib/api-docs';
 
 let server: HttpServer | null = null;
 let wss: WebSocketServer | null = null;
@@ -471,6 +472,17 @@ export async function setupServer() {
         }
       }
     }
+  });
+
+  // API Documentation endpoints
+  app.get('/api/docs', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.send(generateApiDocsHtml());
+  });
+
+  app.get('/api/docs/spec', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json(openApiSpec);
   });
 
   // Add error logging middleware
