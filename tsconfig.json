@@ -40,6 +40,15 @@
       ],
       "@types/*": [
         "./src/types/*"
+      ],
+      "@store/*": [
+        "./src/store/*"
+      ],
+      "@hooks/*": [
+        "./src/lib/hooks/*"
+      ],
+      "@config/*": [
+        "./src/config/*"
       ]
     },
     "plugins": [
