@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { shallow } from 'zustand/shallow'
 import { useMemo } from 'react'
 
 export type ServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'installing'
@@ -567,7 +566,7 @@ export const useInstalledServers = () => {
     () => (state: MCPState) => state.servers.filter(s => state.installedServers.includes(s.id)),
     []
   )
-  return useMCPStore(selector, shallow)
+  return useMCPStore(selector)
 }
 
 export const useConnectedServers = () => {
@@ -575,7 +574,7 @@ export const useConnectedServers = () => {
     () => (state: MCPState) => state.servers.filter(s => state.activeConnections.includes(s.id)),
     []
   )
-  return useMCPStore(selector, shallow)
+  return useMCPStore(selector)
 }
 
 export const useDownloadedModels = () => {
@@ -583,7 +582,7 @@ export const useDownloadedModels = () => {
     () => (state: MCPState) => state.models.filter(m => state.downloadedModels.includes(m.id)),
     []
   )
-  return useMCPStore(selector, shallow)
+  return useMCPStore(selector)
 }
 
 export const useActiveDownloads = () => {
@@ -591,7 +590,7 @@ export const useActiveDownloads = () => {
     () => (state: MCPState) => state.downloads.filter(d => d.status === 'downloading'),
     []
   )
-  return useMCPStore(selector, shallow)
+  return useMCPStore(selector)
 }
 
 export const useStoreFilters = () => {

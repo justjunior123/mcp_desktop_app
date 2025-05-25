@@ -100,9 +100,9 @@ export const Sidebar: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       {/* Header Section */}
-      <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex-shrink-0 p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 relative z-30">
         <button
           onClick={handleCreateNewChat}
           className="w-full bg-primary-500 hover:bg-primary-600 text-white rounded-lg py-3 px-4 flex items-center justify-center space-x-2 transition-colors"
@@ -113,7 +113,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Current View Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         {currentView === 'chat' && (
           <ChatSidebar
             searchQuery={searchQuery}
@@ -138,7 +138,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Footer Section */}
-      <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+      <div className="flex-shrink-0 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 relative z-30">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="text-center">
             <div className="flex items-center justify-center space-x-1 text-slate-500">
@@ -180,15 +180,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
-      <div className="p-4">
-        <div className="relative">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div className="flex-shrink-0 p-3 bg-white dark:bg-slate-800 relative z-20">
+        <div className="relative h-10 flex items-center">
+          <MagnifyingGlassIcon className="relative left-3 w-4 h-4 text-slate-400 z-10" />
           <input
             type="text"
             placeholder="Search conversations..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent relative"
           />
         </div>
       </div>
@@ -250,14 +250,14 @@ const SessionItem: React.FC<SessionItemProps> = ({
 
   return (
     <div className="relative group">
-      <button
-        onClick={onSelect}
+      <div
         className={clsx(
-          'w-full text-left p-3 rounded-lg transition-colors relative',
+          'w-full text-left p-3 rounded-lg transition-colors relative cursor-pointer',
           isActive
             ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
             : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
         )}
+        onClick={onSelect}
       >
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
@@ -302,11 +302,11 @@ const SessionItem: React.FC<SessionItemProps> = ({
             )}
           </div>
         )}
-      </button>
+      </div>
 
       {/* Context Menu */}
       {showMenu && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-10">
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-50">
           <button
             onClick={(e) => {
               e.stopPropagation()
