@@ -17,6 +17,7 @@ describe('Database Integration Tests', () => {
   let testUserId: string;
   let testModelId: string;
   let testSessionId: string;
+  let testModel: any;
 
   beforeAll(async () => {
     // Initialize test database
@@ -32,10 +33,10 @@ describe('Database Integration Tests', () => {
     });
     testUserId = testUser.id;
 
-    // Create test model
-    const testModel = await prisma.ollamaModel.create({
+    // Create test model with unique name
+    testModel = await prisma.ollamaModel.create({
       data: {
-        name: 'test-model',
+        name: `test-model-${Date.now()}`,
         size: BigInt(1000000),
         digest: 'test-digest',
         format: 'ggml',
@@ -337,7 +338,7 @@ describe('Database Integration Tests', () => {
       // Try to create model with duplicate name
       await expect(prisma.ollamaModel.create({
         data: {
-          name: 'test-model', // Same as existing model
+          name: testModel.name, // Same as existing model
           size: BigInt(500000),
           digest: 'different-digest',
           format: 'ggml',

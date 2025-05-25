@@ -654,6 +654,63 @@ const chatStream: RequestHandler<{}, any, ChatRequest> = async (req: RequestWith
   }
 };
 
+// Create a new model
+const createModel: RequestHandler<{}, any, LegacyModelParams> = async (req: RequestWithCorrelationId, res): Promise<void> => {
+  const logger = createRequestLogger(req);
+  const timer = logger.time('createModel');
+  
+  try {
+    const { name } = req.body;
+    
+    if (!name) {
+      res.status(400).json(createErrorResponse(
+        APIErrorCode.INVALID_REQUEST,
+        'Model name is required',
+        {},
+        req.correlationId
+      ));
+      return;
+    }
+    
+    logger.info('Creating model', { modelName: name });
+    
+    // Pull the model
+    const model = await modelManager.pullModel(name);
+    
+    logger.info('Model created successfully', { modelName: name });
+    
+    res.status(201).json(createSuccessResponse(
+      serializeModel(model),
+      req.correlationId
+    ));
+  } catch (error) {
+    logger.error('Failed to create model', error);
+    
+    res.status(500).json(createErrorResponse(
+      APIErrorCode.INTERNAL_SERVER_ERROR,
+      error instanceof Error ? error.message : 'Failed to create model',
+      {},
+      req.correlationId
+    ));
+  } finally {
+    timer();
+  }
+};
+
+// Model-specific chat endpoint
+const modelChat: RequestHandler<ModelParams> = async (req: RequestWithCorrelationId, res, next): Promise<void> => {
+  // Add model name to body and call regular chat
+  req.body.model = req.params.name;
+  return chat(req, res, next);
+};
+
+// Model-specific chat stream endpoint
+const modelChatStream: RequestHandler<ModelParams> = async (req: RequestWithCorrelationId, res, next): Promise<void> => {
+  // Add model name to body and call regular chat stream
+  req.body.model = req.params.name;
+  return chatStream(req, res, next);
+};
+
 // Apply security middleware
 router.use(timeoutMiddleware(60000)); // 60 second timeout
 router.use(securityAuditLogger);
@@ -662,10 +719,13 @@ router.use(sanitizeRequestMiddleware);
 // Register routes with appropriate middleware
 router.get('/models', listModels);
 router.get('/models/:name', validateModelParams, getModel);
+router.post('/models', modelOperationsRateLimit, createModel);
 router.post('/models/:name/pull', modelOperationsRateLimit, validateModelParams, pullModel);
 router.put('/models/:name/config', validateModelParams, validateModelConfigUpdate, updateModelConfig);
 router.delete('/models/:name', modelOperationsRateLimit, validateModelParams, deleteModel);
 router.post('/chat', chatRateLimit, validateChatRequest, chat);
 router.post('/chat/stream', chatRateLimit, validateChatRequest, chatStream);
+router.post('/models/:name/chat', chatRateLimit, validateChatRequest, modelChat);
+router.post('/models/:name/chat/stream', chatRateLimit, validateChatRequest, modelChatStream);
 
 export default router; 
