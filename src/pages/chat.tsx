@@ -172,19 +172,19 @@ export default function ChatPage() {
           ) : (
             // Welcome screen
             <div className="h-full flex flex-col items-center justify-center px-4">
-              <div className="max-w-2xl mx-auto text-center">
+              <div className="max-w-xl mx-auto text-center">
                 
                 {/* Hero section */}
-                <div className="mb-12">
-                  <div className="w-20 h-20 bg-gradient-to-br from-primary-500 via-secondary-500 to-accent-500 rounded-3xl flex items-center justify-center text-white mb-6 mx-auto shadow-strong">
-                    <SparklesIcon />
+                <div className="mb-6">
+                  <div className="w-6 h-6 bg-gradient-to-br from-primary-500 via-secondary-500 to-accent-500 rounded-md flex items-center justify-center text-white mb-4 mx-auto shadow-sm hover:shadow-medium transition-all duration-200 hover:scale-105">
+                    <SparklesIcon className="w-3 h-3" />
                   </div>
                   
-                  <h2 className="text-4xl font-bold text-slate-900 dark:text-white mb-4">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
                     Welcome to AI Chat
                   </h2>
                   
-                  <p className="text-lg text-slate-600 dark:text-slate-300 mb-8">
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
                     {selectedModel 
                       ? "Start a conversation with your AI assistant. Ask questions, get help, or just chat!"
                       : "Select a model above to begin chatting with AI"
@@ -192,8 +192,8 @@ export default function ChatPage() {
                   </p>
 
                   {!selectedModel && (
-                    <div className="p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 rounded-xl">
-                      <p className="text-primary-800 dark:text-primary-200 font-medium">
+                    <div className="p-2 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 rounded-md">
+                      <p className="text-primary-800 dark:text-primary-200 font-medium text-xs">
                         👆 Choose an AI model from the dropdown above to get started
                       </p>
                     </div>
@@ -202,24 +202,24 @@ export default function ChatPage() {
 
                 {/* Quick prompts */}
                 {selectedModel && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">
                       💡 Try asking about:
                     </h3>
                     
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2 md:grid-cols-2">
                       {WELCOME_PROMPTS.map((prompt, index) => (
                         <button
                           key={index}
                           onClick={() => handlePromptClick(prompt)}
                           className={clsx(
-                            'p-4 text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl',
-                            'hover:shadow-medium hover:border-primary-300 dark:hover:border-primary-600',
-                            'transition-all duration-200 hover:scale-[1.02]',
+                            'p-3 text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg',
+                            'hover:shadow-sm hover:border-primary-300 dark:hover:border-primary-600',
+                            'transition-all duration-200 hover:scale-[1.01]',
                             'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                           )}
                         >
-                          <span className="block font-medium">
+                          <span className="block font-medium text-sm">
                             {prompt}
                           </span>
                         </button>
